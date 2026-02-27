@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>智慧路線規劃 | 最佳化您的路程</title>
+    <link rel="stylesheet" href="index.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+</head>
+
+<body>
+    <div class="app-container">
+
+        <header class="glass-panel">
+            <h1>智慧路線規劃 <span>TSP Optimizer</span></h1>
+            <p>點擊畫面放置座標點，我們將為您計算出最短且不交叉的巡迴路線！</p>
+        </header>
+
+        <main class="canvas-wrapper glass-panel" style="padding: 0; overflow: hidden; position: relative;">
+            <div id="map"
+                style="width: 100%; height: 100%; border-radius: 15px; position: absolute; inset: 0; z-index: 1;"></div>
+
+            <button id="btnLocation" title="我的位置" class="glass-panel"
+                style="position: absolute; bottom: 25px; right: 15px; z-index: 1000; width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.2); background: rgba(15, 23, 42, 0.7); color: white; cursor: pointer; backdrop-filter: blur(10px);">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4M12 10a2 2 0 100 4 2 2 0 000-4z" />
+                </svg>
+            </button>
+
+            <div id="strategyPanel" class="glass-panel"
+                style="position: absolute; top: 15px; left: 15px; z-index: 1000; padding: 15px; min-width: 220px;">
+                <h3
+                    style="margin-bottom: 12px; font-size: 1rem; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                        <path
+                            d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4">
+                        </path>
+                    </svg>
+                    策略選擇
+                </h3>
+                <div class="strategy-list">
+                    <label class="strategy-option">
+                        <input type="checkbox" id="strat2Opt" checked>
+                        <span class="color-dot" style="background: #38bdf8;"></span>
+                        <span class="name">2-opt 優化</span>
+                    </label>
+                    <label class="strategy-option">
+                        <input type="checkbox" id="stratNN">
+                        <span class="color-dot" style="background: #fbbf24;"></span>
+                        <span class="name">最近鄰居法</span>
+                    </label>
+                    <label class="strategy-option">
+                        <input type="checkbox" id="stratGreedy">
+                        <span class="color-dot" style="background: #34d399;"></span>
+                        <span class="name">貪婪演算法</span>
+                    </label>
+                    <label class="strategy-option">
+                        <input type="checkbox" id="stratInsertion">
+                        <span class="color-dot" style="background: #c084fc;"></span>
+                        <span class="name">插入法</span>
+                    </label>
+                </div>
+            </div>
+            <div id="loading" class="hidden" style="z-index: 1000;">
+                <div class="spinner"></div>
+                <span>計算中...</span>
+            </div>
+
+            <div class="stats-panel glass-panel hidden" id="statsPanel" style="z-index: 1000;">
+                <div class="stat-item">
+                    <span class="label">總距離</span>
+                    <span class="value" id="totalDistance">0.00</span>
+                </div>
+                <div class="stat-item">
+                    <span class="label">座標點數</span>
+                    <span class="value" id="pointCount">0</span>
+                </div>
+            </div>
+        </main>
+
+        <footer class="controls glass-panel">
+            <input type="file" id="gpxInput" accept=".gpx" class="hidden">
+            <button id="btnLoadGpx" class="btn secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                載入 GPX
+            </button>
+            <button id="btnCalculate" class="btn primary" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
+                計算最佳路線
+            </button>
+            <button id="btnExportGpx" class="btn secondary hidden" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                匯出 GPX
+            </button>
+            <button id="btnClear" class="btn secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+                清除畫面
+            </button>
+        </footer>
+
+    </div>
+
+    <div id="toast" class="toast hidden" style="z-index: 2000;">操作成功</div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
