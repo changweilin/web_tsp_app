@@ -42,26 +42,59 @@
                     策略選擇
                 </h3>
                 <div class="strategy-list">
-                    <label class="strategy-option">
-                        <input type="checkbox" id="strat2Opt" checked>
-                        <span class="color-dot" style="background: #38bdf8;"></span>
-                        <span class="name">2-opt 優化</span>
-                    </label>
-                    <label class="strategy-option">
-                        <input type="checkbox" id="stratNN">
-                        <span class="color-dot" style="background: #fbbf24;"></span>
-                        <span class="name">最近鄰居法</span>
-                    </label>
-                    <label class="strategy-option">
-                        <input type="checkbox" id="stratGreedy">
-                        <span class="color-dot" style="background: #34d399;"></span>
-                        <span class="name">貪婪演算法</span>
-                    </label>
-                    <label class="strategy-option">
-                        <input type="checkbox" id="stratInsertion">
-                        <span class="color-dot" style="background: #c084fc;"></span>
-                        <span class="name">插入法</span>
-                    </label>
+                    <!-- Category 1: Base Strategy -->
+                    <div style="margin-bottom: 10px;">
+                        <span
+                            style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">基礎策略</span>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="stratNN" checked>
+                            <span class="color-dot" style="background: #fbbf24;"></span>
+                            <span class="name">最近鄰居法</span>
+                        </label>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="stratGreedy">
+                            <span class="color-dot" style="background: #34d399;"></span>
+                            <span class="name">貪婪演算法</span>
+                        </label>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="stratInsertion">
+                            <span class="color-dot" style="background: #c084fc;"></span>
+                            <span class="name">插入法</span>
+                        </label>
+                    </div>
+
+                    <!-- Category 2: Optimization -->
+                    <div style="margin-bottom: 10px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                        <span
+                            style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">優化方式
+                            (可複選)</span>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="optNone" checked>
+                            <span class="name">無 (<span
+                                    style="display: inline-block; width: 12px; height: 2px; background-color: #f8fafc; border-radius: 1px; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                        </label>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="opt2Opt">
+                            <span class="name">2-Opt 優化 (<span
+                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                        </label>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="optLK">
+                            <span class="name">L-K 優化 (<span
+                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dotted #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                        </label>
+                    </div>
+
+                    <!-- Category 3: Extra Display -->
+                    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                        <span
+                            style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">額外顯示</span>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="stratInitial">
+                            <span class="color-dot" style="background: #94a3b8;"></span>
+                            <span class="name">初始順序</span>
+                        </label>
+                    </div>
                 </div>
             </div>
             <div id="loading" class="hidden" style="z-index: 1000;">

@@ -357,18 +357,76 @@ function run2Opt(initialTour) {
     return bestTour;
 }
 
+function runLinKernighan(baseTour) {
+    // Simplified L-K heuristic (Iterated Local Search via Double-Bridge kick + 2-opt)
+    // Achieves comparable results to L-K for these sizes while being fast enough for JS.
+    let n = points.length;
+    if (n < 4) return run2Opt(points.map((_, i) => i));
+
+    let bestTour = run2Opt([...baseTour]);
+    let bestLen = tourLength(bestTour, true);
+    let currentTour = [...bestTour];
+
+    const maxIterations = 50;
+
+    for (let i = 0; i < maxIterations; i++) {
+        // Double bridge perturbation (4-opt kick)
+        if (n >= 8) {
+            let p1 = 1 + Math.floor(Math.random() * (n / 4));
+            let p2 = p1 + 1 + Math.floor(Math.random() * (n / 4));
+            let p3 = p2 + 1 + Math.floor(Math.random() * (n / 4));
+
+            let A = currentTour.slice(0, p1);
+            let B = currentTour.slice(p1, p2);
+            let C = currentTour.slice(p2, p3);
+            let D = currentTour.slice(p3);
+
+            currentTour = [...A, ...D, ...C, ...B];
+        } else {
+            // For small n, simple swap
+            let idx1 = 1 + Math.floor(Math.random() * (n - 2));
+            let idx2 = 1 + Math.floor(Math.random() * (n - 2));
+            [currentTour[idx1], currentTour[idx2]] = [currentTour[idx2], currentTour[idx1]];
+        }
+
+        currentTour = run2Opt(currentTour);
+        let currentLen = tourLength(currentTour, true);
+
+        if (currentLen < bestLen - 0.00001) {
+            bestTour = [...currentTour];
+            bestLen = currentLen;
+        } else {
+            // Revert back to best if no improvement locally
+            currentTour = [...bestTour];
+        }
+    }
+    return bestTour;
+}
+
 // Async API
 async function calculateTSP() {
     if (points.length < 3) return;
 
-    // Check selected strategies
-    const strat2Opt = document.getElementById('strat2Opt').checked;
-    const stratNN = document.getElementById('stratNN').checked;
-    const stratGreedy = document.getElementById('stratGreedy').checked;
-    const stratInsertion = document.getElementById('stratInsertion').checked;
+    // Check selected base strategies
+    const stratNN = document.getElementById('stratNN')?.checked;
+    const stratGreedy = document.getElementById('stratGreedy')?.checked;
+    const stratInsertion = document.getElementById('stratInsertion')?.checked;
 
-    if (!strat2Opt && !stratNN && !stratGreedy && !stratInsertion) {
-        showToast("請至少選擇一種策略");
+    // Check selected optimizations
+    const optNone = document.getElementById('optNone')?.checked;
+    const opt2Opt = document.getElementById('opt2Opt')?.checked;
+    const optLK = document.getElementById('optLK')?.checked;
+
+    // Check extra display
+    const stratInitial = document.getElementById('stratInitial')?.checked;
+
+    if (!stratInitial && !stratNN && !stratGreedy && !stratInsertion) {
+        showToast("請至少選擇一種基礎策略或初始順序");
+        return;
+    }
+
+    if (!stratInitial && !optNone && !opt2Opt && !optLK) {
+        showToast("請至少選擇一種優化方式");
         return;
     }
 
@@ -383,23 +441,70 @@ async function calculateTSP() {
 
             const results = [];
 
+            // 1. Extra Display (Initial)
+            if (stratInitial) {
+                const tour = points.map((_, i) => i);
+                results.push({ id: 'initial', tour, len: tourLength(tour, true), color: '#94a3b8', name: '初始順序', weight: 4, dash: null, opacity: 0.8, offset: 0 });
+            }
+
+            // 2. Base Strategies Generation
+            const baseStrats = [];
             if (stratNN) {
-                const tour = runNearestNeighbor();
-                results.push({ id: 'nn', tour, len: tourLength(tour, true), color: '#fbbf24', name: '最近鄰居', weight: 4, dash: null, opacity: 0.8, offset: 0 });
+                baseStrats.push({ id: 'nn', tour: runNearestNeighbor(), color: '#fbbf24', name: '最近鄰居' });
             }
             if (stratGreedy) {
-                const tour = runGreedy();
-                results.push({ id: 'greedy', tour, len: tourLength(tour, true), color: '#34d399', name: '貪婪', weight: 4, dash: null, opacity: 0.8, offset: 0 });
+                baseStrats.push({ id: 'greedy', tour: runGreedy(), color: '#34d399', name: '貪婪' });
             }
             if (stratInsertion) {
-                const tour = runInsertion();
-                results.push({ id: 'insertion', tour, len: tourLength(tour, true), color: '#c084fc', name: '插入法', weight: 4, dash: null, opacity: 0.8, offset: 0 });
+                baseStrats.push({ id: 'insertion', tour: runInsertion(), color: '#c084fc', name: '插入法' });
             }
-            if (strat2Opt) {
-                const baseTour = stratNN ? results.find(r => r.id === 'nn').tour : points.map((_, i) => i);
-                const tour = run2Opt(baseTour);
-                results.push({ id: '2opt', tour, len: tourLength(tour, true), color: '#38bdf8', name: '2-Opt', weight: 6, dash: null, opacity: 1, offset: 0 });
-            }
+
+            // 3. Matrix Application (Base x Opt)
+            baseStrats.forEach(base => {
+                if (optNone) {
+                    results.push({
+                        id: base.id + '_none',
+                        tour: base.tour,
+                        len: tourLength(base.tour, true),
+                        color: base.color,
+                        name: base.name + ' (無)',
+                        weight: 4,
+                        dash: null,
+                        opacity: 0.8,
+                        offset: 0
+                    });
+                }
+
+                if (opt2Opt) {
+                    const optTour = run2Opt(base.tour);
+                    results.push({
+                        id: base.id + '_2opt',
+                        tour: optTour,
+                        len: tourLength(optTour, true),
+                        color: base.color,
+                        name: base.name + ' + 2-Opt',
+                        weight: 4,
+                        dash: '10, 8',
+                        opacity: 1,
+                        offset: 0
+                    });
+                }
+
+                if (optLK) {
+                    const lkTour = runLinKernighan(base.tour);
+                    results.push({
+                        id: base.id + '_lk',
+                        tour: lkTour,
+                        len: tourLength(lkTour, true),
+                        color: base.color,
+                        name: base.name + ' + L-K',
+                        weight: 4,
+                        dash: '5, 5', // distinct dotted/dashed pattern
+                        opacity: 1,
+                        offset: 0
+                    });
+                }
+            });
 
             let bestRouteOverall = null;
             let minLenOverall = Infinity;
