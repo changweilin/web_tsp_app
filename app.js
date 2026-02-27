@@ -17,6 +17,8 @@ let optimizedRoute = []; // stores indices for primary export strategy (2-opt if
 let isCalculating = false;
 let origGpxDoc = null; // Store the original XML Document if loaded from GPX
 let userLocationMarker = null;
+let currentCalculatedRoutes = []; // Stores all generated strategy results
+let origFileName = "route"; // Default filename base
 
 // Map layers
 let initialPolyline = null;
@@ -510,6 +512,8 @@ async function calculateTSP() {
             let minLenOverall = Infinity;
             let statsHtml = '';
 
+            currentCalculatedRoutes = results;
+
             results.forEach((res, index) => {
                 if (res.len < minLenOverall) {
                     minLenOverall = res.len;
@@ -596,16 +600,20 @@ gpxInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // Save the original filename without extension to use as base for exports
+    // Ensure we capture it here before parsing because parseGPX calls clearAll() which resets it
+    const incomingFileName = file.name.replace(/\.[^/.]+$/, "");
+
     const reader = new FileReader();
     reader.onload = function (event) {
         const text = event.target.result;
-        parseGPX(text);
+        parseGPX(text, incomingFileName);
         gpxInput.value = ''; // reset so same file can be loaded again if needed
     };
     reader.readAsText(file);
 });
 
-function parseGPX(xmlText) {
+function parseGPX(xmlText, incomingFileName = null) {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlText, "text/xml");
     const err = xmlDoc.querySelector("parsererror");
@@ -627,6 +635,11 @@ function parseGPX(xmlText) {
 
     // Clear everything
     clearAll();
+
+    // Restore the filename if one was provided
+    if (incomingFileName) {
+        origFileName = incomingFileName;
+    }
 
     origGpxDoc = xmlDoc; // Save reference for exporting later
 
@@ -663,36 +676,74 @@ function parseGPX(xmlText) {
 }
 
 // --- GPX File Exporting ---
-btnExportGpx.addEventListener('click', () => {
-    if (optimizedRoute.length === 0) return;
+btnExportGpx.addEventListener('click', async () => {
+    if (currentCalculatedRoutes.length === 0) return;
 
-    const newGpxStr = generateOptimizedGpxXML();
+    const routesToExport = currentCalculatedRoutes.filter(res => res.id !== 'initial');
 
-    const blob = new Blob([newGpxStr], { type: 'application/gpx+xml' });
-    const url = URL.createObjectURL(blob);
+    if (routesToExport.length === 0) {
+        showToast("沒有可匯出的規劃路線");
+        return;
+    }
 
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'optimized_route.gpx';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // If JSZip isn't loaded for some reason, fallback or alert
+    if (typeof JSZip === 'undefined') {
+        alert("無法載入 ZIP 壓縮套件，無法匯出。請確認網路連線！");
+        return;
+    }
 
-    showToast("檔案已下載");
+    try {
+        btnExportGpx.disabled = true;
+        showToast(`正在壓縮打包 ${routesToExport.length} 個路線檔案...`);
+
+        const zip = new JSZip();
+        // Create a folder named after the original file
+        const folder = zip.folder(origFileName);
+
+        routesToExport.forEach((res) => {
+            const newGpxStr = generateOptimizedGpxXML(res.tour, res.name);
+
+            // Clean the strategy name to be filename-safe
+            const safeSuffix = res.name.replace(/[ \/+()]/g, '_').replace(/_+/g, '_').replace(/_$/, '');
+            const fileName = `${origFileName}_${safeSuffix}.gpx`;
+
+            // Add file to ZIP folder
+            folder.file(fileName, newGpxStr);
+        });
+
+        // Generate the ZIP blob
+        const content = await zip.generateAsync({ type: "blob" });
+
+        // Trigger download
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${origFileName}_optimized_routes.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast("打包完成！已開始下載 ZIP 壓縮檔。");
+    } catch (e) {
+        console.error(e);
+        alert("打包 ZIP 過程中發生錯誤：" + e.message);
+    } finally {
+        btnExportGpx.disabled = false;
+    }
 });
 
-function generateOptimizedGpxXML() {
+function generateOptimizedGpxXML(tour, routeName) {
     let gpxStr = `<?xml version="1.0" encoding="UTF-8"?>\n`;
     gpxStr += `<gpx version="1.1" creator="TSP Optimizer" xmlns="http://www.topografix.com/GPX/1/1">\n`;
     gpxStr += `  <trk>\n`;
-    gpxStr += `    <name>Optimized TSP Route</name>\n`;
+    gpxStr += `    <name>${routeName}</name>\n`;
     gpxStr += `    <trkseg>\n`;
 
     // Add points in the calculated order
-    for (let i = 0; i <= optimizedRoute.length; i++) {
+    for (let i = 0; i <= tour.length; i++) {
         // Wrap around to the start to form a closed loop
-        const pt = points[optimizedRoute[i % optimizedRoute.length]];
+        const pt = points[tour[i % tour.length]];
         gpxStr += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
         if (pt.element) {
             const ele = pt.element.querySelector('ele');
@@ -736,6 +787,8 @@ function clearAll() {
     points = [];
     optimizedRoute = [];
     origGpxDoc = null;
+    currentCalculatedRoutes = [];
+    origFileName = "route";
 
     pointGroup.clearLayers();
     if (initialPolyline) map.removeLayer(initialPolyline);
