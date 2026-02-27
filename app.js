@@ -216,197 +216,13 @@ function drawInitialRoute() {
 
 // --- TSP Algorithm Implementations ---
 
-function runNearestNeighbor() {
-    let unvisited = new Set(points.map((_, i) => i));
-    let tour = [0];
-    unvisited.delete(0);
 
-    let current = 0;
-    while (unvisited.size > 0) {
-        let nearest = -1;
-        let minDist = Infinity;
-        for (let j of unvisited) {
-            let d = getDistance(points[current], points[j]);
-            if (d < minDist) {
-                minDist = d;
-                nearest = j;
-            }
-        }
-        tour.push(nearest);
-        unvisited.delete(nearest);
-        current = nearest;
-    }
-    return tour;
-}
 
-function runGreedy() {
-    let edges = [];
-    const n = points.length;
-    for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-            edges.push({ i, j, d: getDistance(points[i], points[j]) });
-        }
-    }
-    edges.sort((a, b) => a.d - b.d);
-
-    let adj = Array.from({ length: n }, () => []);
-    let edgeCount = 0;
-
-    function createsCycle(u, v) {
-        let visited = new Set();
-        let stack = [u];
-        while (stack.length > 0) {
-            let curr = stack.pop();
-            if (curr === v) return true;
-            visited.add(curr);
-            for (let neighbor of adj[curr]) {
-                if (!visited.has(neighbor)) stack.push(neighbor);
-            }
-        }
-        return false;
-    }
-
-    for (let e of edges) {
-        if (adj[e.i].length < 2 && adj[e.j].length < 2) {
-            if (edgeCount === n - 1 || !createsCycle(e.i, e.j)) {
-                adj[e.i].push(e.j);
-                adj[e.j].push(e.i);
-                edgeCount++;
-                if (edgeCount === n) break;
-            }
-        }
-    }
-
-    let tour = [0];
-    let curr = 0;
-    let prev = -1;
-    while (tour.length < n) {
-        let next = adj[curr][0] === prev ? adj[curr][1] : adj[curr][0];
-        tour.push(next);
-        prev = curr;
-        curr = next;
-    }
-    return tour;
-}
-
-function runInsertion() {
-    const n = points.length;
-    let tour = [0, 1, 0];
-    let unvisited = new Set();
-    for (let i = 2; i < n; ++i) unvisited.add(i);
-
-    while (unvisited.size > 0) {
-        let bestK = -1;
-        let bestEdgeIndex = -1;
-        let minIncrease = Infinity;
-
-        let k = unvisited.values().next().value;
-
-        for (let idx = 0; idx < tour.length - 1; idx++) {
-            let i = tour[idx];
-            let j = tour[idx + 1];
-            let increase = getDistance(points[i], points[k]) + getDistance(points[k], points[j]) - getDistance(points[i], points[j]);
-            if (increase < minIncrease) {
-                minIncrease = increase;
-                bestK = k;
-                bestEdgeIndex = idx;
-            }
-        }
-
-        tour.splice(bestEdgeIndex + 1, 0, bestK);
-        unvisited.delete(bestK);
-    }
-    tour.pop();
-    return tour;
-}
-
-function run2Opt(initialTour) {
-    let improved = true;
-    let bestTour = [...initialTour];
-    let bestLen = tourLength(bestTour, true);
-
-    let iterations = 0;
-    let maxIterations = points.length * 100;
-
-    while (improved && iterations < maxIterations) {
-        improved = false;
-        iterations++;
-
-        for (let i = 1; i < bestTour.length - 1; i++) {
-            for (let j = i + 1; j < bestTour.length; j++) {
-                if (j - i === 1) continue;
-
-                let newTour = [
-                    ...bestTour.slice(0, i),
-                    ...bestTour.slice(i, j).reverse(),
-                    ...bestTour.slice(j)
-                ];
-
-                let newLen = tourLength(newTour, true);
-                if (newLen < bestLen - 0.00001) {
-                    bestTour = newTour;
-                    bestLen = newLen;
-                    improved = true;
-                }
-            }
-        }
-    }
-
-    const startIndex = bestTour.indexOf(0);
-    if (startIndex !== -1 && startIndex !== 0) {
-        bestTour = [...bestTour.slice(startIndex), ...bestTour.slice(0, startIndex)];
-    }
-    return bestTour;
-}
-
-function runLinKernighan(baseTour) {
-    // Simplified L-K heuristic (Iterated Local Search via Double-Bridge kick + 2-opt)
-    // Achieves comparable results to L-K for these sizes while being fast enough for JS.
-    let n = points.length;
-    if (n < 4) return run2Opt(points.map((_, i) => i));
-
-    let bestTour = run2Opt([...baseTour]);
-    let bestLen = tourLength(bestTour, true);
-    let currentTour = [...bestTour];
-
-    const maxIterations = 50;
-
-    for (let i = 0; i < maxIterations; i++) {
-        // Double bridge perturbation (4-opt kick)
-        if (n >= 8) {
-            let p1 = 1 + Math.floor(Math.random() * (n / 4));
-            let p2 = p1 + 1 + Math.floor(Math.random() * (n / 4));
-            let p3 = p2 + 1 + Math.floor(Math.random() * (n / 4));
-
-            let A = currentTour.slice(0, p1);
-            let B = currentTour.slice(p1, p2);
-            let C = currentTour.slice(p2, p3);
-            let D = currentTour.slice(p3);
-
-            currentTour = [...A, ...D, ...C, ...B];
-        } else {
-            // For small n, simple swap
-            let idx1 = 1 + Math.floor(Math.random() * (n - 2));
-            let idx2 = 1 + Math.floor(Math.random() * (n - 2));
-            [currentTour[idx1], currentTour[idx2]] = [currentTour[idx2], currentTour[idx1]];
-        }
-
-        currentTour = run2Opt(currentTour);
-        let currentLen = tourLength(currentTour, true);
-
-        if (currentLen < bestLen - 0.00001) {
-            bestTour = [...currentTour];
-            bestLen = currentLen;
-        } else {
-            // Revert back to best if no improvement locally
-            currentTour = [...bestTour];
-        }
-    }
-    return bestTour;
-}
+// Worker instance
+let tspWorker = null;
 
 // Async API
-async function calculateTSP() {
+function calculateTSP() {
     if (points.length < 3) return;
 
     // Check selected base strategies
@@ -436,150 +252,107 @@ async function calculateTSP() {
     loadingOverlay.classList.remove('hidden');
     btnCalculate.disabled = true;
 
-    setTimeout(() => {
-        try {
-            Object.values(strategyPolylines).forEach(poly => map.removeLayer(poly));
-            strategyPolylines = {};
+    // Show a more informative toast
+    showToast("正在背景計算路線中...請稍候");
 
-            const results = [];
+    // Initialize worker if needed
+    if (!tspWorker) {
+        tspWorker = new Worker('worker.js');
+    }
 
-            // 1. Extra Display (Initial)
-            if (stratInitial) {
-                const tour = points.map((_, i) => i);
-                results.push({ id: 'initial', tour, len: tourLength(tour, true), color: '#94a3b8', name: '初始順序', weight: 4, dash: null, opacity: 0.8, offset: 0 });
-            }
+    // Pass data to worker
+    const payloadPoints = points.map(p => ({ lat: p.lat, lon: p.lon }));
+    const payloadConfig = { stratNN, stratGreedy, stratInsertion, optNone, opt2Opt, optLK, stratInitial };
 
-            // 2. Base Strategies Generation
-            const baseStrats = [];
-            if (stratNN) {
-                baseStrats.push({ id: 'nn', tour: runNearestNeighbor(), color: '#fbbf24', name: '最近鄰居' });
-            }
-            if (stratGreedy) {
-                baseStrats.push({ id: 'greedy', tour: runGreedy(), color: '#34d399', name: '貪婪' });
-            }
-            if (stratInsertion) {
-                baseStrats.push({ id: 'insertion', tour: runInsertion(), color: '#c084fc', name: '插入法' });
-            }
-
-            // 3. Matrix Application (Base x Opt)
-            baseStrats.forEach(base => {
-                if (optNone) {
-                    results.push({
-                        id: base.id + '_none',
-                        tour: base.tour,
-                        len: tourLength(base.tour, true),
-                        color: base.color,
-                        name: base.name + ' (無)',
-                        weight: 4,
-                        dash: null,
-                        opacity: 0.8,
-                        offset: 0
-                    });
-                }
-
-                if (opt2Opt) {
-                    const optTour = run2Opt(base.tour);
-                    results.push({
-                        id: base.id + '_2opt',
-                        tour: optTour,
-                        len: tourLength(optTour, true),
-                        color: base.color,
-                        name: base.name + ' + 2-Opt',
-                        weight: 4,
-                        dash: '10, 8',
-                        opacity: 1,
-                        offset: 0
-                    });
-                }
-
-                if (optLK) {
-                    const lkTour = runLinKernighan(base.tour);
-                    results.push({
-                        id: base.id + '_lk',
-                        tour: lkTour,
-                        len: tourLength(lkTour, true),
-                        color: base.color,
-                        name: base.name + ' + L-K',
-                        weight: 4,
-                        dash: '5, 5', // distinct dotted/dashed pattern
-                        opacity: 1,
-                        offset: 0
-                    });
-                }
-            });
-
-            let bestRouteOverall = null;
-            let minLenOverall = Infinity;
-            let statsHtml = '';
-
-            currentCalculatedRoutes = results;
-
-            results.forEach((res, index) => {
-                if (res.len < minLenOverall) {
-                    minLenOverall = res.len;
-                    bestRouteOverall = res.tour;
-                }
-
-                const latlngs = res.tour.map(idx => [points[idx].lat, points[idx].lon]);
-                latlngs.push([points[res.tour[0]].lat, points[res.tour[0]].lon]);
-
-                const offsetLatLngs = latlngs.map(ll => [ll[0] + (index * 0.00005), ll[1] + (index * 0.00005)]);
-
-                const poly = L.polyline(offsetLatLngs, {
-                    color: res.color,
-                    weight: res.weight,
-                    dashArray: res.dash,
-                    opacity: res.opacity,
-                    lineJoin: 'round'
-                }).addTo(map);
-
-                poly.bindTooltip(`${res.name}: ${(res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m')}`, { sticky: true });
-                strategyPolylines[res.id] = poly;
-
-                const distStr = res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m';
-                statsHtml += `<div style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <span style="color: ${res.color}">● ${res.name}</span>
-                <span>${distStr}</span>
-            </div>`;
-            });
-
-            optimizedRoute = bestRouteOverall;
-            updatePointMarkers(bestRouteOverall);
-
-            updateDistanceDisplay(minLenOverall);
-
-            let extraStatsDiv = document.getElementById('extraStatsDetails');
-            if (!extraStatsDiv) {
-                extraStatsDiv = document.createElement('div');
-                extraStatsDiv.id = 'extraStatsDetails';
-                extraStatsDiv.style.marginTop = '5px';
-                extraStatsDiv.style.borderTop = '1px solid rgba(255,255,255,0.1)';
-                extraStatsDiv.style.paddingTop = '5px';
-                statsPanel.appendChild(extraStatsDiv);
-            }
-            extraStatsDiv.innerHTML = statsHtml;
-
-            if (initialPolyline) {
-                initialPolyline.setStyle({ opacity: 0.2, weight: 2 });
-            }
-
-            btnExportGpx.classList.remove('hidden');
-            btnExportGpx.disabled = false;
-
+    tspWorker.onmessage = function (e) {
+        if (!e.data.success) {
+            alert("計算錯誤: " + e.data.error + "\n" + e.data.stack);
+            console.error(e.data.error);
             loadingOverlay.classList.add('hidden');
             isCalculating = false;
             btnCalculate.disabled = false;
-
-            showToast("計算完成！");
-        } catch (e) {
-            alert(e.message + "\n" + e.stack);
-            console.error(e);
-            loadingOverlay.classList.add('hidden');
-            isCalculating = false;
-            btnCalculate.disabled = false;
+            return;
         }
 
-    }, 50);
+        const results = e.data.results;
+
+        Object.values(strategyPolylines).forEach(poly => map.removeLayer(poly));
+        strategyPolylines = {};
+
+        let bestRouteOverall = null;
+        let minLenOverall = Infinity;
+        let statsHtml = '';
+
+        currentCalculatedRoutes = results;
+
+        results.forEach((res, index) => {
+            if (res.len < minLenOverall) {
+                minLenOverall = res.len;
+                bestRouteOverall = res.tour;
+            }
+
+            const latlngs = res.tour.map(idx => [points[idx].lat, points[idx].lon]);
+            latlngs.push([points[res.tour[0]].lat, points[res.tour[0]].lon]);
+
+            const offsetLatLngs = latlngs.map(ll => [ll[0] + (index * 0.00005), ll[1] + (index * 0.00005)]);
+
+            const poly = L.polyline(offsetLatLngs, {
+                color: res.color,
+                weight: res.weight,
+                dashArray: res.dash,
+                opacity: res.opacity,
+                lineJoin: 'round'
+            }).addTo(map);
+
+            poly.bindTooltip(`${res.name}: ${(res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m')}`, { sticky: true });
+            strategyPolylines[res.id] = poly;
+
+            const distStr = res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m';
+            statsHtml += `<div style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span style="color: ${res.color}">● ${res.name}</span>
+            <span>${distStr}</span>
+        </div>`;
+        });
+
+        optimizedRoute = bestRouteOverall;
+        updatePointMarkers(bestRouteOverall);
+
+        updateDistanceDisplay(minLenOverall);
+
+        let extraStatsDiv = document.getElementById('extraStatsDetails');
+        if (!extraStatsDiv) {
+            extraStatsDiv = document.createElement('div');
+            extraStatsDiv.id = 'extraStatsDetails';
+            extraStatsDiv.style.marginTop = '5px';
+            extraStatsDiv.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+            extraStatsDiv.style.paddingTop = '5px';
+            statsPanel.appendChild(extraStatsDiv);
+        }
+        extraStatsDiv.innerHTML = statsHtml;
+
+        if (initialPolyline) {
+            initialPolyline.setStyle({ opacity: 0.2, weight: 2 });
+        }
+
+        btnExportGpx.classList.remove('hidden');
+        btnExportGpx.disabled = false;
+
+        loadingOverlay.classList.add('hidden');
+        isCalculating = false;
+        btnCalculate.disabled = false;
+
+        showToast("計算完成！");
+    };
+
+    tspWorker.onerror = function (e) {
+        alert("Worker錯誤: " + e.message);
+        console.error(e);
+        loadingOverlay.classList.add('hidden');
+        isCalculating = false;
+        btnCalculate.disabled = false;
+    };
+
+    tspWorker.postMessage({ points: payloadPoints, config: payloadConfig });
 }
 
 function updateDistanceDisplay(meters) {
