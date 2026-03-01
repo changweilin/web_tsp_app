@@ -30,7 +30,7 @@ let strategyPolylines = {}; // Key: strat ID, Value: L.polyline
 let pointGroup = L.layerGroup();
 
 // Initialize Leaflet Map (Centered on Taiwan by default)
-const map = L.map('map').setView([23.6978, 120.9605], 7);
+const map = L.map('map', { doubleClickZoom: false }).setView([23.6978, 120.9605], 7);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
@@ -76,8 +76,16 @@ const endIcon = L.divIcon({
 function updatePointMarkers(routeIndices) {
     if (points.length === 0) return;
 
-    // Reset all to default dot
-    points.forEach(p => p.marker.setIcon(dotIcon));
+    // Reset all to default dot and update tooltip to reflect the new route sequence
+    points.forEach((p, i) => {
+        p.marker.setIcon(dotIcon);
+        const sequenceRank = routeIndices.indexOf(i);
+        if (sequenceRank > -1) {
+            p.marker.setTooltipContent((sequenceRank + 1).toString());
+        } else {
+            p.marker.setTooltipContent("-");
+        }
+    });
 
     if (routeIndices.length === 1) {
         points[routeIndices[0]].marker.setIcon(startIcon);
@@ -92,28 +100,29 @@ function updatePointMarkers(routeIndices) {
 }
 
 // Interaction handling
+let mapClickTimeout = null;
+
 map.on('click', function (e) {
     if (isCalculating) return;
-    addPoint(e.latlng.lat, e.latlng.lng);
+
+    // Debounce the map click to allow double-clicks to register as double-clicks without firing single clicks first.
+    if (mapClickTimeout) clearTimeout(mapClickTimeout);
+
+    mapClickTimeout = setTimeout(() => {
+        addPoint(e.latlng.lat, e.latlng.lng);
+        mapClickTimeout = null;
+    }, 250); // wait 250ms to see if a second click creates a dblclick
 });
 
-function addPoint(lat, lon, element = null) {
-    // Add visual marker
-    const marker = L.marker([lat, lon], {
-        icon: dotIcon,
-        draggable: true // Make marker draggable
-    }).bindTooltip((points.length + 1).toString(), {
-        permanent: true,
-        direction: 'top',
-        className: 'custom-tooltip'
-    });
+map.on('dblclick', function (e) {
+    // If the user double clicked the map explicitly (not a marker), we just clear the timeout so it doesn't add a point.
+    if (mapClickTimeout) {
+        clearTimeout(mapClickTimeout);
+        mapClickTimeout = null;
+    }
+});
 
-    pointGroup.addLayer(marker);
-
-    const pointObj = { lat, lon, marker, element: null, ele: 0 };
-    points.push(pointObj);
-
-    // Event listeners
+function bindMarkerEvents(marker, pointObj) {
     marker.on('dragend', function (event) {
         if (isCalculating) return;
         const position = marker.getLatLng();
@@ -123,15 +132,99 @@ function addPoint(lat, lon, element = null) {
         resetRouteState();
     });
 
-    // Delete marker on right-click or double-click
-    const removeHandler = function (event) {
+    // Native right click to open the custom action popup context menu
+    marker.on('contextmenu', (e) => {
+        if (isCalculating) return;
+        L.DomEvent.stopPropagation(e);
+        marker.openPopup();
+    });
+
+    const popupContent = document.createElement('div');
+    popupContent.className = 'custom-marker-popup';
+    popupContent.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 6px; padding: 4px;">
+            <button class="popup-btn delete-btn" style="padding: 6px; text-align: left; background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; border-radius: 4px; cursor: pointer;">🗑️ 刪除座標點</button>
+            <button class="popup-btn insert-prev-btn" style="padding: 6px; text-align: left; background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; border-radius: 4px; cursor: pointer;">➕ 新增上一點</button>
+            <button class="popup-btn insert-next-btn" style="padding: 6px; text-align: left; background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; border-radius: 4px; cursor: pointer;">➕ 新增下一點</button>
+        </div>
+    `;
+
+    popupContent.querySelector('.delete-btn').addEventListener('click', () => {
         if (isCalculating) return;
         removePoint(pointObj);
-    };
-    marker.on('contextmenu', removeHandler);
-    marker.on('dblclick', removeHandler);
+        map.closePopup();
+    });
 
-    resetRouteState();
+    popupContent.querySelector('.insert-prev-btn').addEventListener('click', () => {
+        if (isCalculating) return;
+        insertInterpolatedPoint(pointObj, -1);
+        map.closePopup();
+    });
+
+    popupContent.querySelector('.insert-next-btn').addEventListener('click', () => {
+        if (isCalculating) return;
+        insertInterpolatedPoint(pointObj, 1);
+        map.closePopup();
+    });
+
+    marker.bindPopup(popupContent, { minWidth: 140, closeButton: false });
+}
+
+function insertInterpolatedPoint(targetPointObj, offsetDirection) {
+    if (points.length < 2) {
+        showToast("點數不足，無法內插");
+        return;
+    }
+    const idx = points.indexOf(targetPointObj);
+    if (idx === -1) return;
+
+    // Calculate neighbor index considering array wrapping
+    let neighborIdx;
+    if (offsetDirection === -1) {
+        neighborIdx = (idx - 1 + points.length) % points.length;
+    } else {
+        neighborIdx = (idx + 1) % points.length;
+    }
+
+    const neighbor = points[neighborIdx];
+    const newLat = (targetPointObj.lat + neighbor.lat) / 2;
+    const newLon = (targetPointObj.lon + neighbor.lon) / 2;
+
+    const insertIndex = offsetDirection === -1 ? idx : idx + 1;
+    addPoint(newLat, newLon, null, insertIndex);
+}
+
+function addPoint(lat, lon, element = null, insertIndex = -1, bulkLoad = false) {
+    // Add visual marker
+    const marker = L.marker([lat, lon], {
+        icon: dotIcon,
+        draggable: true // Make marker draggable
+    }).bindTooltip("", {
+        permanent: true,
+        direction: 'top',
+        className: 'custom-tooltip'
+    });
+
+    pointGroup.addLayer(marker);
+
+    const pointObj = { lat, lon, marker, element, ele: 0 };
+
+    if (insertIndex !== -1) {
+        points.splice(insertIndex, 0, pointObj);
+    } else {
+        points.push(pointObj);
+    }
+
+    // Event listeners via Popup Context Menu
+    bindMarkerEvents(marker, pointObj);
+
+    if (!bulkLoad) {
+        // Sync baseline numbers
+        const baselineIndices = points.map((_, i) => i);
+        updatePointMarkers(baselineIndices);
+
+        resetRouteState();
+    }
 }
 
 function removePoint(pointObj) {
@@ -141,11 +234,6 @@ function removePoint(pointObj) {
         pointGroup.removeLayer(pointObj.marker);
         // Remove from array
         points.splice(index, 1);
-
-        // Re-number tooltips
-        points.forEach((p, i) => {
-            p.marker.setTooltipContent((i + 1).toString());
-        });
 
         resetRouteState();
     }
@@ -600,8 +688,14 @@ function runGeneticAlgorithm(baseTour) {
     return bestOverallTour;
 }
 
-// Worker instance
-let tspWorker = null;
+// We store the rendered lines and tours globally to allow individual replay and interaction
+window.routeAnimators = {};
+window.calculatedTours = {};
+
+function formatTime(ms) {
+    if (ms < 1000) return ms.toFixed(0) + "ms";
+    return (ms / 1000).toFixed(1) + "s";
+}
 
 function renderResults(results) {
     Object.values(strategyPolylines).forEach(poly => map.removeLayer(poly));
@@ -634,28 +728,66 @@ function renderResults(results) {
 
         strategyPolylines[res.id] = poly;
 
-        // Snake animation
-        const totalPoints = offsetLatLngs.length;
-        const ptsPerFrame = Math.max(1, Math.ceil(totalPoints / 60)); // spread over ~60 frames
-        let currentPtIdx = 0;
-
-        function animatePolyline() {
-            if (currentPtIdx < totalPoints) {
-                for (let i = 0; i < ptsPerFrame && currentPtIdx < totalPoints; i++) {
-                    poly.addLatLng(offsetLatLngs[currentPtIdx]);
-                    currentPtIdx++;
-                }
-                requestAnimationFrame(animatePolyline);
-            } else {
-                poly.bindTooltip(`${res.name}: ${(res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m')}`, { sticky: true });
-            }
+        // Smooth distance-based continuous interpolation animation
+        const segments = [];
+        let totalPathDist = 0;
+        for (let i = 0; i < offsetLatLngs.length - 1; i++) {
+            const p1 = L.latLng(offsetLatLngs[i]);
+            const p2 = L.latLng(offsetLatLngs[i + 1]);
+            const dist = p1.distanceTo(p2);
+            segments.push({ p1, p2, dist, accumStart: totalPathDist });
+            totalPathDist += dist;
         }
-        animatePolyline();
+
+        // Velocity = constant for all routes so longer routes take longer.
+        // Base is ~2000px/s equivalent map distance. Let's make the shortest route take 3 seconds minimum for SLOW MOTION.
+        const speed = Math.max(minLenOverall, 1000) / 3000; // meters per millisecond
+        const durationMs = totalPathDist / speed;
+
+        window.routeAnimators[res.id] = function playAnimation() {
+            poly.setLatLngs([]); // Reset
+            let startTime = null;
+
+            function animatePolyline(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                const currentDist = elapsed * speed;
+
+                if (currentDist >= totalPathDist) {
+                    poly.setLatLngs(offsetLatLngs);
+                    poly.bindTooltip(`${res.name}: ${(res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m')}`, { sticky: true });
+                    return;
+                }
+
+                const currentPts = [];
+                for (let seg of segments) {
+                    if (currentDist >= seg.accumStart + seg.dist) {
+                        currentPts.push(seg.p1);
+                    } else if (currentDist > seg.accumStart) {
+                        currentPts.push(seg.p1);
+                        const ratio = (currentDist - seg.accumStart) / seg.dist;
+                        const interpLat = seg.p1.lat + (seg.p2.lat - seg.p1.lat) * ratio;
+                        const interpLng = seg.p1.lng + (seg.p2.lng - seg.p1.lng) * ratio;
+                        currentPts.push(L.latLng(interpLat, interpLng));
+                        break;
+                    }
+                }
+                poly.setLatLngs(currentPts);
+                requestAnimationFrame(animatePolyline);
+            }
+            requestAnimationFrame(animatePolyline);
+        };
+
+        // Start playing immediately
+        window.routeAnimators[res.id]();
+
+        window.calculatedTours[res.id] = res.tour;
 
         const distStr = res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m';
-        statsHtml += `<div style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-        <span style="color: ${res.color}">● ${res.name}</span>
-        <span>${distStr}</span>
+        statsHtml += `<div style="font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+        <span class="route-name-btn" data-id="${res.id}" style="color: ${res.color}; flex: 1; cursor: pointer; padding: 2px 4px; border-radius: 4px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='transparent'" title="點擊以依照此路線順序重新編號地圖座標">● ${res.name} <span style="font-size: 0.7rem; color: #64748b;">(${formatTime(durationMs)})</span></span>
+        <span style="font-weight: 600;">${distStr}</span>
+        <button class="replay-btn" data-id="${res.id}" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: white; display: flex; align-items: center; justify-content: center;" title="重播路線動畫">▶️重播</button>
     </div>`;
     });
 
@@ -676,6 +808,26 @@ function renderResults(results) {
     }
     extraStatsDiv.innerHTML = statsHtml;
 
+    // Bind replay buttons
+    extraStatsDiv.querySelectorAll('.replay-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const id = e.currentTarget.getAttribute('data-id');
+            if (window.routeAnimators[id]) window.routeAnimators[id]();
+        });
+    });
+
+    extraStatsDiv.querySelectorAll('.route-name-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const id = e.currentTarget.getAttribute('data-id');
+            const tour = window.calculatedTours[id];
+            if (tour) {
+                optimizedRoute = tour;
+                updatePointMarkers(tour);
+                showToast("已更新座標點編號順序");
+            }
+        });
+    });
+
     if (initialPolyline) {
         initialPolyline.setStyle({ opacity: 0.2, weight: 2 });
     }
@@ -690,52 +842,71 @@ function renderResults(results) {
     showToast("計算完成！");
 }
 
-function calculateTSPFallback(config) {
-    setTimeout(() => {
-        try {
-            const results = [];
+async function calculateTSPFallback(config) {
+    const loadingTextStr = document.getElementById('loadingText');
+    const updateProgress = async (msg) => {
+        if (loadingTextStr) loadingTextStr.textContent = msg;
+        // Yield to browser rendering loop
+        await new Promise(r => setTimeout(r, 10));
+    };
 
-            if (config.stratInitial) {
-                const tour = points.map((_, i) => i);
-                results.push({ id: 'initial', tour, len: tourLength(tour, true), color: '#94a3b8', name: '初始順序', weight: 4, dash: null, opacity: 0.8, offset: 0 });
-            }
+    try {
+        const results = [];
 
-            const baseStrats = [];
-            if (config.stratNN) baseStrats.push({ id: 'nn', tour: runNearestNeighbor(), color: '#fbbf24', name: '最近鄰居' });
-            if (config.stratGreedy) baseStrats.push({ id: 'greedy', tour: runGreedy(), color: '#34d399', name: '貪婪' });
-            if (config.stratInsertion) baseStrats.push({ id: 'insertion', tour: runInsertion(), color: '#c084fc', name: '插入法' });
-
-            baseStrats.forEach(base => {
-                if (config.optNone) {
-                    results.push({ id: base.id + '_none', tour: base.tour, len: tourLength(base.tour, true), color: base.color, name: base.name + ' (無)', weight: 4, dash: null, opacity: 0.8, offset: 0 });
-                }
-                if (config.opt2Opt) {
-                    const optTour = run2Opt(base.tour);
-                    results.push({ id: base.id + '_2opt', tour: optTour, len: tourLength(optTour, true), color: base.color, name: base.name + ' + 2-Opt', weight: 4, dash: '10, 8', opacity: 1, offset: 0 });
-                }
-                if (config.optLK) {
-                    const lkTour = runLinKernighan(base.tour);
-                    results.push({ id: base.id + '_lk', tour: lkTour, len: tourLength(lkTour, true), color: base.color, name: base.name + ' + L-K', weight: 4, dash: '5, 5', opacity: 1, offset: 0 });
-                }
-                if (config.optSA) {
-                    const saTour = runSimulatedAnnealing(base.tour);
-                    results.push({ id: base.id + '_sa', tour: saTour, len: tourLength(saTour, true), color: base.color, name: base.name + ' + SA', weight: 4, dash: '15, 10, 5, 10', opacity: 1, offset: 0 });
-                }
-                if (config.optGA) {
-                    const gaTour = runGeneticAlgorithm(base.tour);
-                    results.push({ id: base.id + '_ga', tour: gaTour, len: tourLength(gaTour, true), color: base.color, name: base.name + ' + GA', weight: 4, dash: '15, 5, 5, 5', opacity: 1, offset: 0 });
-                }
-            });
-
-            renderResults(results);
-        } catch (e) {
-            alert("Fallback 錯誤: " + e.message);
-            console.error(e);
-            loadingOverlay.classList.add('hidden');
-            isCalculating = false;
-            btnCalculate.disabled = false;
+        if (config.stratInitial) {
+            await updateProgress("生成初始順序...");
+            const tour = points.map((_, i) => i);
+            results.push({ id: 'initial', tour, len: tourLength(tour, true), color: '#94a3b8', name: '初始順序', weight: 4, dash: null, opacity: 0.8, offset: 0 });
         }
-    }, 50);
+
+        const baseStrats = [];
+        if (config.stratNN) {
+            await updateProgress("計算基礎策略 (最近鄰居)...");
+            baseStrats.push({ id: 'nn', tour: runNearestNeighbor(), color: '#fbbf24', name: '最近鄰居' });
+        }
+        if (config.stratGreedy) {
+            await updateProgress("計算基礎策略 (貪婪演算法)...");
+            baseStrats.push({ id: 'greedy', tour: runGreedy(), color: '#34d399', name: '貪婪' });
+        }
+        if (config.stratInsertion) {
+            await updateProgress("計算基礎策略 (插入法)...");
+            baseStrats.push({ id: 'insertion', tour: runInsertion(), color: '#c084fc', name: '插入法' });
+        }
+
+        for (const base of baseStrats) {
+            if (config.optNone) {
+                results.push({ id: base.id + '_none', tour: base.tour, len: tourLength(base.tour, true), color: base.color, name: base.name + ' (無)', weight: 4, dash: null, opacity: 0.8, offset: 0 });
+            }
+            if (config.opt2Opt) {
+                await updateProgress(`優化 ${base.name} (2-Opt)...`);
+                const optTour = run2Opt(base.tour);
+                results.push({ id: base.id + '_2opt', tour: optTour, len: tourLength(optTour, true), color: base.color, name: base.name + ' + 2-Opt', weight: 4, dash: '10, 8', opacity: 1, offset: 0 });
+            }
+            if (config.optLK) {
+                await updateProgress(`深入優化 ${base.name} (L-K)...`);
+                const lkTour = runLinKernighan(base.tour);
+                results.push({ id: base.id + '_lk', tour: lkTour, len: tourLength(lkTour, true), color: base.color, name: base.name + ' + L-K', weight: 4, dash: '5, 5', opacity: 1, offset: 0 });
+            }
+            if (config.optSA) {
+                await updateProgress(`模擬退火 ${base.name} (SA)...`);
+                const saTour = runSimulatedAnnealing(base.tour);
+                results.push({ id: base.id + '_sa', tour: saTour, len: tourLength(saTour, true), color: base.color, name: base.name + ' + SA', weight: 4, dash: '15, 10, 5, 10', opacity: 1, offset: 0 });
+            }
+            if (config.optGA) {
+                await updateProgress(`基因演算 ${base.name} (GA)...`);
+                const gaTour = runGeneticAlgorithm(base.tour);
+                results.push({ id: base.id + '_ga', tour: gaTour, len: tourLength(gaTour, true), color: base.color, name: base.name + ' + GA', weight: 4, dash: '15, 5, 5, 5', opacity: 1, offset: 0 });
+            }
+        }
+
+        renderResults(results);
+    } catch (e) {
+        alert("Fallback 錯誤: " + e.message);
+        console.error(e);
+        loadingOverlay.classList.add('hidden');
+        isCalculating = false;
+        btnCalculate.disabled = false;
+    }
 }
 
 // Async API
@@ -995,22 +1166,9 @@ function parseGPX(xmlText, incomingFileName = null) {
             points.push({ lat, lon, marker, element: pt, ele });
             bounds.extend([lat, lon]);
 
-            // Add drag listeners for newly parsed points just like addPoint does
+            // Add popup context menus and interaction handlers
             const pointObj = points[points.length - 1];
-            marker.on('dragend', function (event) {
-                if (isCalculating) return;
-                const position = marker.getLatLng();
-                pointObj.lat = position.lat;
-                pointObj.lon = position.lng;
-                resetRouteState();
-            });
-
-            const removeHandler = function (event) {
-                if (isCalculating) return;
-                removePoint(pointObj);
-            };
-            marker.on('contextmenu', removeHandler);
-            marker.on('dblclick', removeHandler);
+            bindMarkerEvents(marker, pointObj);
         }
     });
 
@@ -1188,6 +1346,16 @@ map.on('locationerror', function (e) {
 
 btnClear.addEventListener('click', clearAll);
 
+const btnReplayAll = document.getElementById('btnReplayAll');
+if (btnReplayAll) {
+    btnReplayAll.addEventListener('click', () => {
+        if (!window.routeAnimators) return;
+        Object.values(window.routeAnimators).forEach(animator => {
+            if (typeof animator === 'function') animator();
+        });
+    });
+}
+
 // Bind config changes to saveState
 document.querySelectorAll('.strategy-option input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', saveState);
@@ -1222,7 +1390,14 @@ function loadState() {
                 // Temporarily disable saveState to prevent redundant writes
                 const originalSaveState = saveState;
                 saveState = function () { };
-                pts.forEach(p => addPoint(p.lat, p.lon));
+
+                pts.forEach(p => addPoint(p.lat, p.lon, null, -1, true));
+
+                // Perform bulk UI sync once
+                const baselineIndices = points.map((_, i) => i);
+                updatePointMarkers(baselineIndices);
+                resetRouteState();
+
                 saveState = originalSaveState;
 
                 let bounds = L.latLngBounds();

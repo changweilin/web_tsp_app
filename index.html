@@ -126,9 +126,14 @@
             </div>
 
             <div class="stats-panel glass-panel hidden" id="statsPanel" style="z-index: 1000;">
-                <div class="stat-item">
-                    <span class="label">總距離</span>
-                    <span class="value" id="totalDistance">0.00</span>
+                <div class="stat-item"
+                    style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <div>
+                        <span class="label">總距離</span>
+                        <span class="value" id="totalDistance">0.00</span>
+                    </div>
+                    <button id="btnReplayAll" class="action-button secondary"
+                        style="padding: 4px 10px; font-size: 0.8rem; height: auto;">▶️ 全部慢動作重播</button>
                 </div>
                 <div class="stat-item">
                     <span class="label">座標點數</span>
