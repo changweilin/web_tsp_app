@@ -1,3 +1,8 @@
+window.onerror = function (message, source, lineno, colno, error) {
+    alert("執行時發生未預期錯誤，請截圖給開發者:\n" + message + "\nLine: " + lineno + "\nSource: " + source);
+    return false;
+};
+
 // Elements
 const btnCalculate = document.getElementById('btnCalculate');
 const btnClear = document.getElementById('btnClear');
@@ -8,7 +13,6 @@ const loadingOverlay = document.getElementById('loading');
 const toastEl = document.getElementById('toast');
 const gpxInput = document.getElementById('gpxInput');
 const btnLoadGpx = document.getElementById('btnLoadGpx');
-const btnExportGpx = document.getElementById('btnExportGpx');
 const btnLocation = document.getElementById('btnLocation');
 
 // State
@@ -95,19 +99,56 @@ map.on('click', function (e) {
 
 function addPoint(lat, lon, element = null) {
     // Add visual marker
-    const marker = L.marker([lat, lon], { icon: dotIcon })
-        .bindTooltip((points.length + 1).toString(), {
-            permanent: true,
-            direction: 'top',
-            className: 'custom-tooltip'
-        });
+    const marker = L.marker([lat, lon], {
+        icon: dotIcon,
+        draggable: true // Make marker draggable
+    }).bindTooltip((points.length + 1).toString(), {
+        permanent: true,
+        direction: 'top',
+        className: 'custom-tooltip'
+    });
 
     pointGroup.addLayer(marker);
 
-    // Save state
-    points.push({ lat, lon, marker, element });
+    const pointObj = { lat, lon, marker, element: null, ele: 0 };
+    points.push(pointObj);
+
+    // Event listeners
+    marker.on('dragend', function (event) {
+        if (isCalculating) return;
+        const position = marker.getLatLng();
+        pointObj.lat = position.lat;
+        pointObj.lon = position.lng;
+        // Optimization routes are invalidated on drag
+        resetRouteState();
+    });
+
+    // Delete marker on right-click or double-click
+    const removeHandler = function (event) {
+        if (isCalculating) return;
+        removePoint(pointObj);
+    };
+    marker.on('contextmenu', removeHandler);
+    marker.on('dblclick', removeHandler);
 
     resetRouteState();
+}
+
+function removePoint(pointObj) {
+    const index = points.indexOf(pointObj);
+    if (index > -1) {
+        // Remove from map
+        pointGroup.removeLayer(pointObj.marker);
+        // Remove from array
+        points.splice(index, 1);
+
+        // Re-number tooltips
+        points.forEach((p, i) => {
+            p.marker.setTooltipContent((i + 1).toString());
+        });
+
+        resetRouteState();
+    }
 }
 
 function resetRouteState() {
@@ -127,6 +168,9 @@ function resetRouteState() {
         initialPolyline = null;
     }
 
+    const elevationPanel = document.getElementById('elevationPanel');
+    if (elevationPanel) elevationPanel.classList.add('hidden');
+
     // Enable calculate button if enough points
     if (points.length >= 3) {
         btnCalculate.disabled = false;
@@ -138,7 +182,34 @@ function resetRouteState() {
         btnCalculate.classList.add('secondary');
     }
 
-    btnExportGpx.classList.add('hidden');
+    const exportDropdown = document.getElementById('exportDropdown');
+    exportDropdown.classList.add('hidden');
+
+    if (typeof saveState === 'function') saveState();
+}
+
+function saveState() {
+    if (isCalculating) return;
+
+    // Save configuration checkboxes
+    const configStrats = {
+        stratNN: document.getElementById('stratNN')?.checked,
+        stratGreedy: document.getElementById('stratGreedy')?.checked,
+        stratInsertion: document.getElementById('stratInsertion')?.checked,
+        optNone: document.getElementById('optNone')?.checked,
+        opt2Opt: document.getElementById('opt2Opt')?.checked,
+        optLK: document.getElementById('optLK')?.checked,
+        optSA: document.getElementById('optSA')?.checked,
+        optGA: document.getElementById('optGA')?.checked,
+        stratInitial: document.getElementById('stratInitial')?.checked
+    };
+
+    // Extract pure coordinates from points
+    const pts = points.map(p => ({ lat: p.lat, lon: p.lon }));
+
+    localStorage.setItem('tsp_config', JSON.stringify(configStrats));
+    localStorage.setItem('tsp_points', JSON.stringify(pts));
+    localStorage.setItem('tsp_filename', origFileName);
 }
 
 function updateStats() {
@@ -405,6 +476,130 @@ function runLinKernighan(baseTour) {
     return bestTour;
 }
 
+function runSimulatedAnnealing(baseTour) {
+    let n = points.length;
+    if (n < 4) return run2Opt(points.map((_, i) => i));
+
+    let currentTour = [...baseTour];
+    let currentLen = tourLength(currentTour, true);
+
+    let bestTour = [...currentTour];
+    let bestLen = currentLen;
+
+    let temp = 10000;
+    const coolingRate = 0.995;
+    const minTemp = 0.001;
+    const iterationsPerTemp = Math.min(n * 2, 100);
+
+    while (temp > minTemp) {
+        for (let i = 0; i < iterationsPerTemp; i++) {
+            let idx1 = 1 + Math.floor(Math.random() * (n - 2));
+            let idx2 = 1 + Math.floor(Math.random() * (n - 2));
+            if (idx1 === idx2) continue;
+            if (idx1 > idx2) [idx1, idx2] = [idx2, idx1];
+
+            let newTour = [
+                ...currentTour.slice(0, idx1),
+                ...currentTour.slice(idx1, idx2).reverse(),
+                ...currentTour.slice(idx2)
+            ];
+
+            let newLen = tourLength(newTour, true);
+            let delta = newLen - currentLen;
+
+            if (delta < 0 || Math.random() < Math.exp(-delta / temp)) {
+                currentTour = newTour;
+                currentLen = newLen;
+
+                if (currentLen < bestLen) {
+                    bestTour = [...currentTour];
+                    bestLen = currentLen;
+                }
+            }
+        }
+        temp *= coolingRate;
+    }
+
+    return bestTour;
+}
+
+function runGeneticAlgorithm(baseTour) {
+    let n = points.length;
+    if (n < 4) return run2Opt(points.map((_, i) => i));
+
+    const popSize = Math.max(50, n * 2);
+    const generations = 200;
+    const mutationRate = 0.1;
+
+    let population = [];
+    population.push([...baseTour]);
+
+    for (let i = 1; i < popSize; i++) {
+        let tour = [...baseTour];
+        for (let k = 0; k < n; k++) {
+            let i1 = 1 + Math.floor(Math.random() * (n - 2));
+            let i2 = 1 + Math.floor(Math.random() * (n - 2));
+            [tour[i1], tour[i2]] = [tour[i2], tour[i1]];
+        }
+        population.push(tour);
+    }
+
+    let bestOverallTour = [...baseTour];
+    let bestOverallLen = tourLength(baseTour, true);
+
+    for (let gen = 0; gen < generations; gen++) {
+        let scored = population.map(t => ({ tour: t, len: tourLength(t, true) }));
+        scored.sort((a, b) => a.len - b.len);
+
+        if (scored[0].len < bestOverallLen) {
+            bestOverallLen = scored[0].len;
+            bestOverallTour = [...scored[0].tour];
+        }
+
+        let nextPop = [];
+        nextPop.push(scored[0].tour);
+        nextPop.push(scored[1].tour);
+
+        while (nextPop.length < popSize) {
+            let parent1 = scored[Math.floor(Math.pow(Math.random(), 3) * popSize)].tour;
+            let parent2 = scored[Math.floor(Math.pow(Math.random(), 3) * popSize)].tour;
+
+            let start = 1 + Math.floor(Math.random() * (n - 2));
+            let end = 1 + Math.floor(Math.random() * (n - 2));
+            if (start > end) [start, end] = [end, start];
+
+            let child = new Array(n).fill(-1);
+            child[0] = parent1[0];
+            child[n - 1] = parent1[n - 1];
+
+            for (let i = start; i < end; i++) {
+                child[i] = parent1[i];
+            }
+
+            let p2Idx = 1;
+            for (let i = 1; i < n - 1; i++) {
+                if (child[i] === -1) {
+                    while (child.includes(parent2[p2Idx])) {
+                        p2Idx++;
+                    }
+                    child[i] = parent2[p2Idx];
+                }
+            }
+
+            if (Math.random() < mutationRate) {
+                let m1 = 1 + Math.floor(Math.random() * (n - 2));
+                let m2 = 1 + Math.floor(Math.random() * (n - 2));
+                [child[m1], child[m2]] = [child[m2], child[m1]];
+            }
+
+            nextPop.push(child);
+        }
+        population = nextPop;
+    }
+
+    return bestOverallTour;
+}
+
 // Worker instance
 let tspWorker = null;
 
@@ -429,7 +624,7 @@ function renderResults(results) {
 
         const offsetLatLngs = latlngs.map(ll => [ll[0] + (index * 0.00005), ll[1] + (index * 0.00005)]);
 
-        const poly = L.polyline(offsetLatLngs, {
+        const poly = L.polyline([], {
             color: res.color,
             weight: res.weight,
             dashArray: res.dash,
@@ -437,8 +632,25 @@ function renderResults(results) {
             lineJoin: 'round'
         }).addTo(map);
 
-        poly.bindTooltip(`${res.name}: ${(res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m')}`, { sticky: true });
         strategyPolylines[res.id] = poly;
+
+        // Snake animation
+        const totalPoints = offsetLatLngs.length;
+        const ptsPerFrame = Math.max(1, Math.ceil(totalPoints / 60)); // spread over ~60 frames
+        let currentPtIdx = 0;
+
+        function animatePolyline() {
+            if (currentPtIdx < totalPoints) {
+                for (let i = 0; i < ptsPerFrame && currentPtIdx < totalPoints; i++) {
+                    poly.addLatLng(offsetLatLngs[currentPtIdx]);
+                    currentPtIdx++;
+                }
+                requestAnimationFrame(animatePolyline);
+            } else {
+                poly.bindTooltip(`${res.name}: ${(res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m')}`, { sticky: true });
+            }
+        }
+        animatePolyline();
 
         const distStr = res.len > 1000 ? (res.len / 1000).toFixed(2) + ' km' : res.len.toFixed(0) + ' m';
         statsHtml += `<div style="font-size: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
@@ -451,6 +663,7 @@ function renderResults(results) {
     updatePointMarkers(bestRouteOverall);
 
     updateDistanceDisplay(minLenOverall);
+    drawElevationProfile(bestRouteOverall);
 
     let extraStatsDiv = document.getElementById('extraStatsDetails');
     if (!extraStatsDiv) {
@@ -467,8 +680,8 @@ function renderResults(results) {
         initialPolyline.setStyle({ opacity: 0.2, weight: 2 });
     }
 
-    btnExportGpx.classList.remove('hidden');
-    btnExportGpx.disabled = false;
+    const exportDropdown = document.getElementById('exportDropdown');
+    exportDropdown.classList.remove('hidden');
 
     loadingOverlay.classList.add('hidden');
     isCalculating = false;
@@ -504,6 +717,14 @@ function calculateTSPFallback(config) {
                     const lkTour = runLinKernighan(base.tour);
                     results.push({ id: base.id + '_lk', tour: lkTour, len: tourLength(lkTour, true), color: base.color, name: base.name + ' + L-K', weight: 4, dash: '5, 5', opacity: 1, offset: 0 });
                 }
+                if (config.optSA) {
+                    const saTour = runSimulatedAnnealing(base.tour);
+                    results.push({ id: base.id + '_sa', tour: saTour, len: tourLength(saTour, true), color: base.color, name: base.name + ' + SA', weight: 4, dash: '15, 10, 5, 10', opacity: 1, offset: 0 });
+                }
+                if (config.optGA) {
+                    const gaTour = runGeneticAlgorithm(base.tour);
+                    results.push({ id: base.id + '_ga', tour: gaTour, len: tourLength(gaTour, true), color: base.color, name: base.name + ' + GA', weight: 4, dash: '15, 5, 5, 5', opacity: 1, offset: 0 });
+                }
             });
 
             renderResults(results);
@@ -530,6 +751,8 @@ function calculateTSP() {
     const optNone = document.getElementById('optNone')?.checked;
     const opt2Opt = document.getElementById('opt2Opt')?.checked;
     const optLK = document.getElementById('optLK')?.checked;
+    const optSA = document.getElementById('optSA')?.checked;
+    const optGA = document.getElementById('optGA')?.checked;
 
     // Check extra display
     const stratInitial = document.getElementById('stratInitial')?.checked;
@@ -539,7 +762,7 @@ function calculateTSP() {
         return;
     }
 
-    if (!stratInitial && !optNone && !opt2Opt && !optLK) {
+    if (!stratInitial && !optNone && !opt2Opt && !optLK && !optSA && !optGA) {
         showToast("請至少選擇一種優化方式");
         return;
     }
@@ -551,7 +774,10 @@ function calculateTSP() {
     // Show a more informative toast
     showToast("正在計算路線中...請稍候");
 
-    const payloadConfig = { stratNN, stratGreedy, stratInsertion, optNone, opt2Opt, optLK, stratInitial };
+    const loadingTextStr = document.getElementById('loadingText');
+    if (loadingTextStr) loadingTextStr.textContent = "正在準備計算...";
+
+    const payloadConfig = { stratNN, stratGreedy, stratInsertion, optNone, opt2Opt, optLK, optSA, optGA, stratInitial };
 
     try {
         // Initialize worker if needed
@@ -559,6 +785,11 @@ function calculateTSP() {
             tspWorker = new Worker('worker.js');
 
             tspWorker.onmessage = function (e) {
+                if (e.data.type === 'progress') {
+                    if (loadingTextStr) loadingTextStr.textContent = e.data.message;
+                    return;
+                }
+
                 if (!e.data.success) {
                     console.error("Worker returned internal error:", e.data.error);
                     console.warn("Falling back to synchronous calculation due to internal worker error.");
@@ -593,46 +824,140 @@ function updateDistanceDisplay(meters) {
     }
 }
 
+function drawElevationProfile(tour) {
+    const hasElevation = points.some(p => p.ele !== undefined && p.ele !== 0);
+    const elevationPanel = document.getElementById('elevationPanel');
+
+    if (!hasElevation || !elevationPanel) {
+        if (elevationPanel) elevationPanel.classList.add('hidden');
+        return;
+    }
+
+    elevationPanel.classList.remove('hidden');
+
+    let currentDist = 0;
+    const profileData = [];
+    for (let i = 0; i <= tour.length; i++) {
+        const idx = tour[i % tour.length];
+        const pt = points[idx];
+        const ele = pt.ele || 0;
+
+        profileData.push({ dist: currentDist, ele });
+
+        if (i < tour.length) {
+            const nextIdx = tour[(i + 1) % tour.length];
+            // Compute distance via existing getter fallback mapping (getDistance is in app.js scope)
+            if (typeof getDistance === 'function') {
+                currentDist += getDistance(pt, points[nextIdx]);
+            }
+        }
+    }
+
+    const maxDist = currentDist || 1;
+    let minEle = Math.min(...profileData.map(d => d.ele));
+    let maxEle = Math.max(...profileData.map(d => d.ele));
+
+    // add margin
+    const diff = maxEle - minEle;
+    if (diff === 0) {
+        maxEle += 10;
+        minEle -= 10;
+    } else {
+        maxEle += diff * 0.1;
+        minEle -= diff * 0.1;
+    }
+    const eleRange = maxEle - minEle;
+
+    const svgChart = document.getElementById('eleChart');
+    let pathData = `0,100 `;
+    profileData.forEach(d => {
+        const x = (d.dist / maxDist) * 100;
+        const y = 100 - (((d.ele - minEle) / eleRange) * 100);
+        pathData += `${x},${y} `;
+    });
+    pathData += `100,100`;
+
+    svgChart.setAttribute('viewBox', '0 0 100 100');
+    svgChart.setAttribute('preserveAspectRatio', 'none');
+    const polyline = document.getElementById('elePolyline');
+    if (polyline) polyline.setAttribute('points', pathData);
+}
 
 // --- GPX File Loading & Projection ---
 btnLoadGpx.addEventListener('click', () => {
+    // Clear input first so selecting the same file triggers 'change' again
+    gpxInput.value = '';
     gpxInput.click();
 });
 
 gpxInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    try {
+        const file = e.target.files[0];
+        if (!file) {
+            gpxInput.value = '';
+            return;
+        }
 
-    // Save the original filename without extension to use as base for exports
-    // Ensure we capture it here before parsing because parseGPX calls clearAll() which resets it
-    const incomingFileName = file.name.replace(/\.[^/.]+$/, "");
+        const incomingFileName = file.name.replace(/\.[^/.]+$/, "");
+        const reader = new FileReader();
 
-    const reader = new FileReader();
-    reader.onload = function (event) {
-        const text = event.target.result;
-        parseGPX(text, incomingFileName);
-        gpxInput.value = ''; // reset so same file can be loaded again if needed
-    };
-    reader.readAsText(file);
+        reader.onload = function (event) {
+            try {
+                const text = event.target.result;
+                parseGPX(text, incomingFileName);
+            } catch (err) {
+                alert("GPX 載入過程發生程式錯誤: " + err.message + "\n請截圖告知開發者！");
+                console.error(err);
+            } finally {
+                gpxInput.value = '';
+            }
+        };
+
+        reader.onerror = function (err) {
+            alert("讀取檔案時發生錯誤: " + err);
+            gpxInput.value = '';
+        };
+
+        reader.readAsText(file);
+    } catch (err) {
+        alert("檔案讀取啟動失敗: " + err.message);
+        gpxInput.value = '';
+    }
 });
 
 function parseGPX(xmlText, incomingFileName = null) {
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-    const err = xmlDoc.querySelector("parsererror");
-    if (err) {
-        alert("GPX 檔案解析失敗");
+
+    // Fallback safe way to check parsererror without querySelector
+    const errorNodes = xmlDoc.getElementsByTagName("parsererror");
+    if (errorNodes && errorNodes.length > 0) {
+        alert("GPX 檔案解析失敗: 存在 parsererror 標籤。\n內容: " + errorNodes[0].textContent);
         return;
     }
 
-    // Extract Waypoints (<wpt>) or Trackpoints (<trkpt>)
-    let ptElements = Array.from(xmlDoc.querySelectorAll('wpt'));
+    // Extract Waypoints (<wpt>) or Trackpoints (<trkpt>) using namespace-agnostic search
+    let ptElements = Array.from(xmlDoc.getElementsByTagNameNS('*', 'wpt'));
     if (ptElements.length === 0) {
-        ptElements = Array.from(xmlDoc.querySelectorAll('trkpt'));
+        ptElements = Array.from(xmlDoc.getElementsByTagNameNS('*', 'trkpt'));
+    }
+    if (ptElements.length === 0) {
+        ptElements = Array.from(xmlDoc.getElementsByTagNameNS('*', 'rtept'));
     }
 
     if (ptElements.length === 0) {
-        alert("找不到 GPX 座標點！");
+        // Fallback to strict queries in case wildcard completely fails in this environment
+        ptElements = Array.from(xmlDoc.getElementsByTagName('wpt'));
+        if (ptElements.length === 0) {
+            ptElements = Array.from(xmlDoc.getElementsByTagName('trkpt'));
+        }
+        if (ptElements.length === 0) {
+            ptElements = Array.from(xmlDoc.getElementsByTagName('rtept'));
+        }
+    }
+
+    if (ptElements.length === 0) {
+        alert(`GPX 載入失敗！找不到 <wpt> 或 <trkpt> 座標點。\n檢查結果：wildcard wpt=${xmlDoc.getElementsByTagNameNS('*', 'wpt').length}, trkpt=${xmlDoc.getElementsByTagNameNS('*', 'trkpt').length}\n請確定您的 GPX 格式正確！`);
         return;
     }
 
@@ -652,8 +977,14 @@ function parseGPX(xmlText, incomingFileName = null) {
         const lat = parseFloat(pt.getAttribute('lat'));
         const lon = parseFloat(pt.getAttribute('lon'));
 
+        let ele = 0;
+        const eleNodes = pt.getElementsByTagNameNS('*', 'ele');
+        if (eleNodes && eleNodes.length > 0) {
+            ele = parseFloat(eleNodes[0].textContent);
+        }
+
         if (!isNaN(lat) && !isNaN(lon)) {
-            const marker = L.marker([lat, lon], { icon: dotIcon })
+            const marker = L.marker([lat, lon], { icon: dotIcon, draggable: true })
                 .bindTooltip((points.length + 1).toString(), {
                     permanent: true,
                     direction: 'top',
@@ -661,13 +992,30 @@ function parseGPX(xmlText, incomingFileName = null) {
                 });
 
             pointGroup.addLayer(marker);
-            points.push({ lat, lon, marker, element: pt });
+            points.push({ lat, lon, marker, element: pt, ele });
             bounds.extend([lat, lon]);
+
+            // Add drag listeners for newly parsed points just like addPoint does
+            const pointObj = points[points.length - 1];
+            marker.on('dragend', function (event) {
+                if (isCalculating) return;
+                const position = marker.getLatLng();
+                pointObj.lat = position.lat;
+                pointObj.lon = position.lng;
+                resetRouteState();
+            });
+
+            const removeHandler = function (event) {
+                if (isCalculating) return;
+                removePoint(pointObj);
+            };
+            marker.on('contextmenu', removeHandler);
+            marker.on('dblclick', removeHandler);
         }
     });
 
     if (points.length < 3) {
-        alert("GPX 檔案中的座標點過少 (需要至少 3 點)！");
+        alert(`GPX 檔案中的座標點過少 (需要至少 3 點)！\n偵測到的節點數: ${ptElements.length}\n成功轉換的座標點數: ${points.length}`);
         return;
     }
 
@@ -678,8 +1026,8 @@ function parseGPX(xmlText, incomingFileName = null) {
     showToast(`成功載入 ${points.length} 個座標點`);
 }
 
-// --- GPX File Exporting ---
-btnExportGpx.addEventListener('click', async () => {
+// --- File Exporting (ZIP) ---
+async function exportZip(formatExt, generatorFunc) {
     if (currentCalculatedRoutes.length === 0) return;
 
     const routesToExport = currentCalculatedRoutes.filter(res => res.id !== 'initial');
@@ -689,39 +1037,30 @@ btnExportGpx.addEventListener('click', async () => {
         return;
     }
 
-    // If JSZip isn't loaded for some reason, fallback or alert
     if (typeof JSZip === 'undefined') {
         alert("無法載入 ZIP 壓縮套件，無法匯出。請確認網路連線！");
         return;
     }
 
     try {
-        btnExportGpx.disabled = true;
-        showToast(`正在壓縮打包 ${routesToExport.length} 個路線檔案...`);
+        showToast(`正在壓縮打包 ${routesToExport.length} 個 ${formatExt.toUpperCase()} 路線檔案...`);
 
         const zip = new JSZip();
-        // Create a folder named after the original file
         const folder = zip.folder(origFileName);
 
         routesToExport.forEach((res) => {
-            const newGpxStr = generateOptimizedGpxXML(res.tour, res.name);
-
-            // Clean the strategy name to be filename-safe
+            const contentStr = generatorFunc(res.tour, res.name);
             const safeSuffix = res.name.replace(/[ \/+()]/g, '_').replace(/_+/g, '_').replace(/_$/, '');
-            const fileName = `${origFileName}_${safeSuffix}.gpx`;
-
-            // Add file to ZIP folder
-            folder.file(fileName, newGpxStr);
+            const fileName = `${origFileName}_${safeSuffix}.${formatExt}`;
+            folder.file(fileName, contentStr);
         });
 
-        // Generate the ZIP blob
         const content = await zip.generateAsync({ type: "blob" });
 
-        // Trigger download
         const url = URL.createObjectURL(content);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${origFileName}_optimized_routes.zip`;
+        a.download = `${origFileName}_optimized_${formatExt}.zip`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -731,9 +1070,19 @@ btnExportGpx.addEventListener('click', async () => {
     } catch (e) {
         console.error(e);
         alert("打包 ZIP 過程中發生錯誤：" + e.message);
-    } finally {
-        btnExportGpx.disabled = false;
     }
+}
+
+document.getElementById('btnExportGpxItem').addEventListener('click', () => {
+    exportZip('gpx', generateOptimizedGpxXML);
+});
+
+document.getElementById('btnExportKmlItem').addEventListener('click', () => {
+    exportZip('kml', generateOptimizedKML);
+});
+
+document.getElementById('btnExportGeoJsonItem').addEventListener('click', () => {
+    exportZip('geojson', generateOptimizedGeoJSON);
 });
 
 function generateOptimizedGpxXML(tour, routeName) {
@@ -745,7 +1094,6 @@ function generateOptimizedGpxXML(tour, routeName) {
 
     // Add points in the calculated order
     for (let i = 0; i <= tour.length; i++) {
-        // Wrap around to the start to form a closed loop
         const pt = points[tour[i % tour.length]];
         gpxStr += `      <trkpt lat="${pt.lat}" lon="${pt.lon}">\n`;
         if (pt.element) {
@@ -757,6 +1105,60 @@ function generateOptimizedGpxXML(tour, routeName) {
 
     gpxStr += `    </trkseg>\n  </trk>\n</gpx>`;
     return gpxStr;
+}
+
+function generateOptimizedKML(tour, routeName) {
+    let kmlStr = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    kmlStr += `<kml xmlns="http://www.opengis.net/kml/2.2">\n`;
+    kmlStr += `  <Document>\n`;
+    kmlStr += `    <name>${routeName}</name>\n`;
+    kmlStr += `    <Placemark>\n`;
+    kmlStr += `      <name>${routeName}</name>\n`;
+    kmlStr += `      <LineString>\n`;
+    kmlStr += `        <coordinates>\n`;
+
+    for (let i = 0; i <= tour.length; i++) {
+        const pt = points[tour[i % tour.length]];
+        const ele = pt.element ? pt.element.querySelector('ele') : null;
+        const eleStr = ele ? `,${ele.textContent}` : ``;
+        kmlStr += `          ${pt.lon},${pt.lat}${eleStr}\n`;
+    }
+
+    kmlStr += `        </coordinates>\n`;
+    kmlStr += `      </LineString>\n`;
+    kmlStr += `    </Placemark>\n`;
+    kmlStr += `  </Document>\n`;
+    kmlStr += `</kml>`;
+    return kmlStr;
+}
+
+function generateOptimizedGeoJSON(tour, routeName) {
+    let coords = [];
+    for (let i = 0; i <= tour.length; i++) {
+        const pt = points[tour[i % tour.length]];
+        const ele = pt.element ? pt.element.querySelector('ele') : null;
+        if (ele) {
+            coords.push(`[${pt.lon}, ${pt.lat}, ${ele.textContent}]`);
+        } else {
+            coords.push(`[${pt.lon}, ${pt.lat}]`);
+        }
+    }
+
+    return `{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "${routeName}"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [\n        ${coords.join(',\n        ')}\n      ]
+      }
+    }
+  ]
+}`;
 }
 
 // Button bindings
@@ -786,12 +1188,61 @@ map.on('locationerror', function (e) {
 
 btnClear.addEventListener('click', clearAll);
 
+// Bind config changes to saveState
+document.querySelectorAll('.strategy-option input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', saveState);
+});
+
+// State Restoration
+function loadState() {
+    try {
+        const configJson = localStorage.getItem('tsp_config');
+        if (configJson) {
+            const config = JSON.parse(configJson);
+            if (config.stratNN !== undefined) document.getElementById('stratNN').checked = config.stratNN;
+            if (config.stratGreedy !== undefined) document.getElementById('stratGreedy').checked = config.stratGreedy;
+            if (config.stratInsertion !== undefined) document.getElementById('stratInsertion').checked = config.stratInsertion;
+            if (config.optNone !== undefined) document.getElementById('optNone').checked = config.optNone;
+            if (config.opt2Opt !== undefined) document.getElementById('opt2Opt').checked = config.opt2Opt;
+            if (config.optLK !== undefined) document.getElementById('optLK').checked = config.optLK;
+            if (config.optSA !== undefined) { const el = document.getElementById('optSA'); if (el) el.checked = config.optSA; }
+            if (config.optGA !== undefined) { const el = document.getElementById('optGA'); if (el) el.checked = config.optGA; }
+            if (config.stratInitial !== undefined) document.getElementById('stratInitial').checked = config.stratInitial;
+        }
+
+        const savedFileName = localStorage.getItem('tsp_filename');
+        if (savedFileName) {
+            origFileName = savedFileName;
+        }
+
+        const ptsJson = localStorage.getItem('tsp_points');
+        if (ptsJson) {
+            const pts = JSON.parse(ptsJson);
+            if (Array.isArray(pts) && pts.length > 0) {
+                // Temporarily disable saveState to prevent redundant writes
+                const originalSaveState = saveState;
+                saveState = function () { };
+                pts.forEach(p => addPoint(p.lat, p.lon));
+                saveState = originalSaveState;
+
+                let bounds = L.latLngBounds();
+                pts.forEach(p => bounds.extend([p.lat, p.lon]));
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load state", e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadState);
 function clearAll() {
     points = [];
     optimizedRoute = [];
     origGpxDoc = null;
     currentCalculatedRoutes = [];
     origFileName = "route";
+    localStorage.removeItem('tsp_filename'); // Clear filename memory when map is cleared
 
     pointGroup.clearLayers();
     if (initialPolyline) map.removeLayer(initialPolyline);
@@ -814,7 +1265,9 @@ function clearAll() {
     btnCalculate.disabled = true;
     btnCalculate.classList.remove('primary');
     btnCalculate.classList.add('secondary');
-    btnExportGpx.classList.add('hidden');
+
+    const exportDropdown = document.getElementById('exportDropdown');
+    if (exportDropdown) exportDropdown.classList.add('hidden');
     updateStats();
 
     if (this === btnClear) {

@@ -86,6 +86,16 @@
                             <span class="name">L-K 優化 (<span
                                     style="display: inline-block; width: 12px; height: 0; border-top: 2px dotted #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
                         </label>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="optSA">
+                            <span class="name">退火優化 (<span
+                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                        </label>
+                        <label class="strategy-option">
+                            <input type="checkbox" id="optGA">
+                            <span class="name">基因優化 (<span
+                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                        </label>
                     </div>
 
                     <!-- Category 3: Extra Display -->
@@ -100,9 +110,19 @@
                     </div>
                 </div>
             </div>
+
+            <div id="elevationPanel" class="glass-panel hidden"
+                style="position: absolute; bottom: 80px; left: 15px; right: 15px; height: 120px; z-index: 1000; padding: 10px; display: flex; flex-direction: column;">
+                <span style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 5px; font-weight: bold;">海拔高度剖面圖
+                    (最佳路線)</span>
+                <svg id="eleChart" width="100%" height="100%" preserveAspectRatio="none">
+                    <polyline id="elePolyline" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" stroke-width="2" />
+                </svg>
+            </div>
             <div id="loading" class="hidden" style="z-index: 1000;">
                 <div class="spinner"></div>
-                <span>計算中...</span>
+                <span id="loadingText"
+                    style="display: block; margin-top: 15px; font-weight: 600; font-size: 0.95rem; color: #f8fafc; letter-spacing: 0.5px; text-align: center;">計算中...</span>
             </div>
 
             <div class="stats-panel glass-panel hidden" id="statsPanel" style="z-index: 1000;">
@@ -131,12 +151,19 @@
                 </svg>
                 計算最佳路線
             </button>
-            <button id="btnExportGpx" class="btn secondary hidden" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                匯出 GPX
-            </button>
+            <div id="exportDropdown" class="dropdown hidden">
+                <button id="btnExportMenu" class="btn secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    匯出路線 ▼
+                </button>
+                <div class="dropdown-content">
+                    <button id="btnExportGpxItem" class="dropdown-item">打包下載 .gpx</button>
+                    <button id="btnExportKmlItem" class="dropdown-item">打包下載 .kml</button>
+                    <button id="btnExportGeoJsonItem" class="dropdown-item">打包下載 .geojson</button>
+                </div>
+            </div>
             <button id="btnClear" class="btn secondary">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />

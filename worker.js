@@ -215,6 +215,142 @@ function runLinKernighan(baseTour) {
     return bestTour;
 }
 
+function runSimulatedAnnealing(baseTour) {
+    let n = points.length;
+    if (n < 4) return run2Opt(points.map((_, i) => i));
+
+    let currentTour = [...baseTour];
+    let currentLen = tourLength(currentTour, true);
+
+    let bestTour = [...currentTour];
+    let bestLen = currentLen;
+
+    // SA Parameters
+    let temp = 10000;
+    const coolingRate = 0.995;
+    const minTemp = 0.001;
+    const iterationsPerTemp = Math.min(n * 2, 100);
+
+    while (temp > minTemp) {
+        for (let i = 0; i < iterationsPerTemp; i++) {
+            // Pick two random edges to 2-opt swap
+            let idx1 = 1 + Math.floor(Math.random() * (n - 2));
+            let idx2 = 1 + Math.floor(Math.random() * (n - 2));
+            if (idx1 === idx2) continue;
+            if (idx1 > idx2) [idx1, idx2] = [idx2, idx1];
+
+            // Calculate delta length
+            let newTour = [
+                ...currentTour.slice(0, idx1),
+                ...currentTour.slice(idx1, idx2).reverse(),
+                ...currentTour.slice(idx2)
+            ];
+
+            let newLen = tourLength(newTour, true);
+            let delta = newLen - currentLen;
+
+            // Acceptance probability
+            if (delta < 0 || Math.random() < Math.exp(-delta / temp)) {
+                currentTour = newTour;
+                currentLen = newLen;
+
+                if (currentLen < bestLen) {
+                    bestTour = [...currentTour];
+                    bestLen = currentLen;
+                }
+            }
+        }
+        temp *= coolingRate;
+    }
+
+    return bestTour;
+}
+
+function runGeneticAlgorithm(baseTour) {
+    let n = points.length;
+    if (n < 4) return run2Opt(points.map((_, i) => i));
+
+    const popSize = Math.max(50, n * 2);
+    const generations = 200;
+    const mutationRate = 0.1;
+
+    // Initialize population
+    let population = [];
+    population.push([...baseTour]); // Ensure base is in population
+
+    for (let i = 1; i < popSize; i++) {
+        let tour = [...baseTour];
+        // randomize middle
+        for (let k = 0; k < n; k++) {
+            let i1 = 1 + Math.floor(Math.random() * (n - 2));
+            let i2 = 1 + Math.floor(Math.random() * (n - 2));
+            [tour[i1], tour[i2]] = [tour[i2], tour[i1]];
+        }
+        population.push(tour);
+    }
+
+    let bestOverallTour = [...baseTour];
+    let bestOverallLen = tourLength(baseTour, true);
+
+    for (let gen = 0; gen < generations; gen++) {
+        // Evaluate
+        let scored = population.map(t => ({ tour: t, len: tourLength(t, true) }));
+        scored.sort((a, b) => a.len - b.len);
+
+        if (scored[0].len < bestOverallLen) {
+            bestOverallLen = scored[0].len;
+            bestOverallTour = [...scored[0].tour];
+        }
+
+        let nextPop = [];
+        // Elitism
+        nextPop.push(scored[0].tour);
+        nextPop.push(scored[1].tour);
+
+        // Crossover and mutate
+        while (nextPop.length < popSize) {
+            // Tournament selection
+            let parent1 = scored[Math.floor(Math.pow(Math.random(), 3) * popSize)].tour;
+            let parent2 = scored[Math.floor(Math.pow(Math.random(), 3) * popSize)].tour;
+
+            // Order Crossover (OX)
+            let start = 1 + Math.floor(Math.random() * (n - 2));
+            let end = 1 + Math.floor(Math.random() * (n - 2));
+            if (start > end) [start, end] = [end, start];
+
+            let child = new Array(n).fill(-1);
+            child[0] = parent1[0];
+            child[n - 1] = parent1[n - 1];
+
+            for (let i = start; i < end; i++) {
+                child[i] = parent1[i];
+            }
+
+            let p2Idx = 1;
+            for (let i = 1; i < n - 1; i++) {
+                if (child[i] === -1) {
+                    while (child.includes(parent2[p2Idx])) {
+                        p2Idx++;
+                    }
+                    child[i] = parent2[p2Idx];
+                }
+            }
+
+            // Mutate
+            if (Math.random() < mutationRate) {
+                let m1 = 1 + Math.floor(Math.random() * (n - 2));
+                let m2 = 1 + Math.floor(Math.random() * (n - 2));
+                [child[m1], child[m2]] = [child[m2], child[m1]];
+            }
+
+            nextPop.push(child);
+        }
+        population = nextPop;
+    }
+
+    return bestOverallTour;
+}
+
 self.addEventListener('message', function (e) {
     points = e.data.points;
     const config = e.data.config;
@@ -231,12 +367,15 @@ self.addEventListener('message', function (e) {
         // 2. Base Strategies Generation
         const baseStrats = [];
         if (config.stratNN) {
+            self.postMessage({ type: 'progress', message: '正在執行基礎策略 (最近鄰居法)...' });
             baseStrats.push({ id: 'nn', tour: runNearestNeighbor(), color: '#fbbf24', name: '最近鄰居' });
         }
         if (config.stratGreedy) {
+            self.postMessage({ type: 'progress', message: '正在執行基礎策略 (貪婪演算法)...' });
             baseStrats.push({ id: 'greedy', tour: runGreedy(), color: '#34d399', name: '貪婪' });
         }
         if (config.stratInsertion) {
+            self.postMessage({ type: 'progress', message: '正在執行基礎策略 (插入法)...' });
             baseStrats.push({ id: 'insertion', tour: runInsertion(), color: '#c084fc', name: '插入法' });
         }
 
@@ -257,6 +396,7 @@ self.addEventListener('message', function (e) {
             }
 
             if (config.opt2Opt) {
+                self.postMessage({ type: 'progress', message: `正在優化 ${base.name} (2-Opt)...` });
                 const optTour = run2Opt(base.tour);
                 results.push({
                     id: base.id + '_2opt',
@@ -272,6 +412,7 @@ self.addEventListener('message', function (e) {
             }
 
             if (config.optLK) {
+                self.postMessage({ type: 'progress', message: `正在更深入優化 ${base.name} (L-K)...` });
                 const lkTour = runLinKernighan(base.tour);
                 results.push({
                     id: base.id + '_lk',
@@ -281,6 +422,38 @@ self.addEventListener('message', function (e) {
                     name: base.name + ' + L-K',
                     weight: 4,
                     dash: '5, 5',
+                    opacity: 1,
+                    offset: 0
+                });
+            }
+
+            if (config.optSA) {
+                self.postMessage({ type: 'progress', message: `正在運用模擬退火優化 ${base.name} (SA)...` });
+                const saTour = runSimulatedAnnealing(base.tour);
+                results.push({
+                    id: base.id + '_sa',
+                    tour: saTour,
+                    len: tourLength(saTour, true),
+                    color: base.color,
+                    name: base.name + ' + SA',
+                    weight: 4,
+                    dash: '15, 10, 5, 10',
+                    opacity: 1,
+                    offset: 0
+                });
+            }
+
+            if (config.optGA) {
+                self.postMessage({ type: 'progress', message: `正在運用基因演算法優化 ${base.name} (GA)...` });
+                const gaTour = runGeneticAlgorithm(base.tour);
+                results.push({
+                    id: base.id + '_ga',
+                    tour: gaTour,
+                    len: tourLength(gaTour, true),
+                    color: base.color,
+                    name: base.name + ' + GA',
+                    weight: 4,
+                    dash: '15, 5, 5, 5',
                     opacity: 1,
                     offset: 0
                 });
