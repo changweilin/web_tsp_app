@@ -1,4 +1,12 @@
 let points = [];
+let currentStepGlobal = 0;
+let totalStepsGlobal = 1;
+
+function reportProgress(msg, subProgress = 0) {
+    const safeSub = Math.max(0, Math.min(1, subProgress));
+    const totalP = Math.min(100, Math.max(0, ((currentStepGlobal + safeSub) / totalStepsGlobal) * 100));
+    self.postMessage({ type: 'progress', message: msg, percent: totalP.toFixed(1) });
+}
 
 // Haversine Distance (in meters)
 function getHaversineDistance(lat1, lon1, lat2, lon2) {
@@ -185,6 +193,7 @@ function runLinKernighan(baseTour) {
     const maxIterations = 50;
 
     for (let i = 0; i < maxIterations; i++) {
+        if (i % 5 === 0) reportProgress("正在更深入優化 (L-K)...", i / maxIterations);
         if (n >= 8) {
             let p1 = 1 + Math.floor(Math.random() * (n / 4));
             let p2 = p1 + 1 + Math.floor(Math.random() * (n / 4));
@@ -231,7 +240,11 @@ function runSimulatedAnnealing(baseTour) {
     const minTemp = 0.001;
     const iterationsPerTemp = Math.min(n * 2, 100);
 
+    const totalExpectedIter = Math.ceil(Math.log(minTemp / temp) / Math.log(coolingRate));
+    let iter = 0;
+
     while (temp > minTemp) {
+        if (iter % 50 === 0) reportProgress("正在運用模擬退火優化 (SA)...", iter / totalExpectedIter);
         for (let i = 0; i < iterationsPerTemp; i++) {
             // Pick two random edges to 2-opt swap
             let idx1 = 1 + Math.floor(Math.random() * (n - 2));
@@ -261,6 +274,7 @@ function runSimulatedAnnealing(baseTour) {
             }
         }
         temp *= coolingRate;
+        iter++;
     }
 
     return bestTour;
@@ -293,6 +307,7 @@ function runGeneticAlgorithm(baseTour) {
     let bestOverallLen = tourLength(baseTour, true);
 
     for (let gen = 0; gen < generations; gen++) {
+        if (gen % 10 === 0) reportProgress("正在運用基因演算法優化 (GA)...", gen / generations);
         // Evaluate
         let scored = population.map(t => ({ tour: t, len: tourLength(t, true) }));
         scored.sort((a, b) => a.len - b.len);
@@ -356,27 +371,46 @@ self.addEventListener('message', function (e) {
     const config = e.data.config;
 
     try {
+        let baseStratsCount = 0;
+        if (config.stratNN) baseStratsCount++;
+        if (config.stratGreedy) baseStratsCount++;
+        if (config.stratInsertion) baseStratsCount++;
+
+        let optCount = 0;
+        if (config.opt2Opt) optCount++;
+        if (config.optLK) optCount++;
+        if (config.optSA) optCount++;
+        if (config.optGA) optCount++;
+
+        totalStepsGlobal = (config.stratInitial ? 1 : 0) + baseStratsCount + (baseStratsCount * optCount);
+        currentStepGlobal = 0;
+
         const results = [];
 
         // 1. Extra Display (Initial)
         if (config.stratInitial) {
+            reportProgress("生成初始順序...");
             const tour = points.map((_, i) => i);
             results.push({ id: 'initial', tour, len: tourLength(tour, true), color: '#94a3b8', name: '初始順序', weight: 4, dash: null, opacity: 0.8, offset: 0 });
+            currentStepGlobal++;
         }
 
         // 2. Base Strategies Generation
         const baseStrats = [];
         if (config.stratNN) {
-            self.postMessage({ type: 'progress', message: '正在執行基礎策略 (最近鄰居法)...' });
+            reportProgress('正在執行基礎策略 (最近鄰居法)...');
             baseStrats.push({ id: 'nn', tour: runNearestNeighbor(), color: '#fbbf24', name: '最近鄰居' });
+            currentStepGlobal++;
         }
         if (config.stratGreedy) {
-            self.postMessage({ type: 'progress', message: '正在執行基礎策略 (貪婪演算法)...' });
+            reportProgress('正在執行基礎策略 (貪婪演算法)...');
             baseStrats.push({ id: 'greedy', tour: runGreedy(), color: '#34d399', name: '貪婪' });
+            currentStepGlobal++;
         }
         if (config.stratInsertion) {
-            self.postMessage({ type: 'progress', message: '正在執行基礎策略 (插入法)...' });
+            reportProgress('正在執行基礎策略 (插入法)...');
             baseStrats.push({ id: 'insertion', tour: runInsertion(), color: '#c084fc', name: '插入法' });
+            currentStepGlobal++;
         }
 
         // 3. Matrix Application (Base x Opt)
@@ -396,7 +430,7 @@ self.addEventListener('message', function (e) {
             }
 
             if (config.opt2Opt) {
-                self.postMessage({ type: 'progress', message: `正在優化 ${base.name} (2-Opt)...` });
+                reportProgress(`正在優化 ${base.name} (2-Opt)...`);
                 const optTour = run2Opt(base.tour);
                 results.push({
                     id: base.id + '_2opt',
@@ -409,10 +443,11 @@ self.addEventListener('message', function (e) {
                     opacity: 1,
                     offset: 0
                 });
+                currentStepGlobal++;
             }
 
             if (config.optLK) {
-                self.postMessage({ type: 'progress', message: `正在更深入優化 ${base.name} (L-K)...` });
+                reportProgress(`正在更深入優化 ${base.name} (L-K)...`);
                 const lkTour = runLinKernighan(base.tour);
                 results.push({
                     id: base.id + '_lk',
@@ -425,10 +460,11 @@ self.addEventListener('message', function (e) {
                     opacity: 1,
                     offset: 0
                 });
+                currentStepGlobal++;
             }
 
             if (config.optSA) {
-                self.postMessage({ type: 'progress', message: `正在運用模擬退火優化 ${base.name} (SA)...` });
+                reportProgress(`正在運用模擬退火優化 ${base.name} (SA)...`);
                 const saTour = runSimulatedAnnealing(base.tour);
                 results.push({
                     id: base.id + '_sa',
@@ -441,10 +477,11 @@ self.addEventListener('message', function (e) {
                     opacity: 1,
                     offset: 0
                 });
+                currentStepGlobal++;
             }
 
             if (config.optGA) {
-                self.postMessage({ type: 'progress', message: `正在運用基因演算法優化 ${base.name} (GA)...` });
+                reportProgress(`正在運用基因演算法優化 ${base.name} (GA)...`);
                 const gaTour = runGeneticAlgorithm(base.tour);
                 results.push({
                     id: base.id + '_ga',
@@ -457,6 +494,7 @@ self.addEventListener('message', function (e) {
                     opacity: 1,
                     offset: 0
                 });
+                currentStepGlobal++;
             }
         });
 

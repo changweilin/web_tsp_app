@@ -10,6 +10,8 @@ const statsPanel = document.getElementById('statsPanel');
 const totalDistanceEl = document.getElementById('totalDistance');
 const pointCountEl = document.getElementById('pointCount');
 const loadingOverlay = document.getElementById('loading');
+const loadingTextEl = document.getElementById('loadingText');
+const progressBar = document.getElementById('progressBar');
 const toastEl = document.getElementById('toast');
 const gpxInput = document.getElementById('gpxInput');
 const btnLoadGpx = document.getElementById('btnLoadGpx');
@@ -843,9 +845,28 @@ function renderResults(results) {
 }
 
 async function calculateTSPFallback(config) {
-    const loadingTextStr = document.getElementById('loadingText');
-    const updateProgress = async (msg) => {
-        if (loadingTextStr) loadingTextStr.textContent = msg;
+    if (progressBar) progressBar.style.width = '0%';
+
+    let baseStratsCount = 0;
+    if (config.stratNN) baseStratsCount++;
+    if (config.stratGreedy) baseStratsCount++;
+    if (config.stratInsertion) baseStratsCount++;
+
+    let optCount = 0;
+    if (config.opt2Opt) optCount++;
+    if (config.optLK) optCount++;
+    if (config.optSA) optCount++;
+    if (config.optGA) optCount++;
+
+    const totalStepsGlobal = (config.stratInitial ? 1 : 0) + baseStratsCount + (baseStratsCount * optCount);
+    let currentStepGlobal = 0;
+
+    const updateProgress = async (msg, subPercent = 0) => {
+        const safeSub = Math.max(0, Math.min(1, subPercent));
+        const totalP = Math.min(100, Math.max(0, ((currentStepGlobal + safeSub) / totalStepsGlobal) * 100));
+
+        if (loadingTextEl) loadingTextEl.textContent = msg;
+        if (progressBar) progressBar.style.width = totalP.toFixed(1) + '%';
         // Yield to browser rendering loop
         await new Promise(r => setTimeout(r, 10));
     };
@@ -857,20 +878,24 @@ async function calculateTSPFallback(config) {
             await updateProgress("生成初始順序...");
             const tour = points.map((_, i) => i);
             results.push({ id: 'initial', tour, len: tourLength(tour, true), color: '#94a3b8', name: '初始順序', weight: 4, dash: null, opacity: 0.8, offset: 0 });
+            currentStepGlobal++;
         }
 
         const baseStrats = [];
         if (config.stratNN) {
             await updateProgress("計算基礎策略 (最近鄰居)...");
             baseStrats.push({ id: 'nn', tour: runNearestNeighbor(), color: '#fbbf24', name: '最近鄰居' });
+            currentStepGlobal++;
         }
         if (config.stratGreedy) {
             await updateProgress("計算基礎策略 (貪婪演算法)...");
             baseStrats.push({ id: 'greedy', tour: runGreedy(), color: '#34d399', name: '貪婪' });
+            currentStepGlobal++;
         }
         if (config.stratInsertion) {
             await updateProgress("計算基礎策略 (插入法)...");
             baseStrats.push({ id: 'insertion', tour: runInsertion(), color: '#c084fc', name: '插入法' });
+            currentStepGlobal++;
         }
 
         for (const base of baseStrats) {
@@ -881,21 +906,25 @@ async function calculateTSPFallback(config) {
                 await updateProgress(`優化 ${base.name} (2-Opt)...`);
                 const optTour = run2Opt(base.tour);
                 results.push({ id: base.id + '_2opt', tour: optTour, len: tourLength(optTour, true), color: base.color, name: base.name + ' + 2-Opt', weight: 4, dash: '10, 8', opacity: 1, offset: 0 });
+                currentStepGlobal++;
             }
             if (config.optLK) {
                 await updateProgress(`深入優化 ${base.name} (L-K)...`);
                 const lkTour = runLinKernighan(base.tour);
                 results.push({ id: base.id + '_lk', tour: lkTour, len: tourLength(lkTour, true), color: base.color, name: base.name + ' + L-K', weight: 4, dash: '5, 5', opacity: 1, offset: 0 });
+                currentStepGlobal++;
             }
             if (config.optSA) {
                 await updateProgress(`模擬退火 ${base.name} (SA)...`);
                 const saTour = runSimulatedAnnealing(base.tour);
                 results.push({ id: base.id + '_sa', tour: saTour, len: tourLength(saTour, true), color: base.color, name: base.name + ' + SA', weight: 4, dash: '15, 10, 5, 10', opacity: 1, offset: 0 });
+                currentStepGlobal++;
             }
             if (config.optGA) {
                 await updateProgress(`基因演算 ${base.name} (GA)...`);
                 const gaTour = runGeneticAlgorithm(base.tour);
                 results.push({ id: base.id + '_ga', tour: gaTour, len: tourLength(gaTour, true), color: base.color, name: base.name + ' + GA', weight: 4, dash: '15, 5, 5, 5', opacity: 1, offset: 0 });
+                currentStepGlobal++;
             }
         }
 
@@ -940,6 +969,7 @@ function calculateTSP() {
 
     isCalculating = true;
     loadingOverlay.classList.remove('hidden');
+    if (progressBar) progressBar.style.width = '0%';
     btnCalculate.disabled = true;
 
     // Show a more informative toast
@@ -958,6 +988,7 @@ function calculateTSP() {
             tspWorker.onmessage = function (e) {
                 if (e.data.type === 'progress') {
                     if (loadingTextStr) loadingTextStr.textContent = e.data.message;
+                    if (e.data.percent !== undefined && progressBar) progressBar.style.width = e.data.percent + '%';
                     return;
                 }
 
