@@ -624,10 +624,10 @@ footer.controls {
     left: 31.0px;
     width: 140.0px;
     transform: rotate(0.00deg);
-    opacity: 1;
     border-top: 2px dashed #94a3b8;
     background: transparent;
     height: 0;
+    animation: fadeOutBad 4s infinite;
 }
 
 .ins-node-new {
@@ -659,66 +659,57 @@ footer.controls {
 
 /* L-K Animation */
 .lk-line-bad1 {
-    top: 29.5px;
-    left: 31.0px;
-    width: 113.1px;
+    top: 24.5px;
+    left: 86.0px;
+    width: 141.4px;
     transform: rotate(45.00deg);
     background: #ef4444;
     animation: fadeBoth 4s infinite;
 }
 
 .lk-line-bad2 {
-    top: 109.5px;
-    left: 31.0px;
-    width: 113.1px;
+    top: 124.5px;
+    left: 86.0px;
+    width: 141.4px;
     transform: rotate(-45.00deg);
     background: #ef4444;
     animation: fadeBoth 4s infinite;
 }
 
 .lk-line-bad3 {
-    top: 29.5px;
-    left: 111.0px;
-    width: 124.2px;
-    transform: rotate(40.10deg);
-    background: #ef4444;
-    animation: fadeBoth 4s infinite;
-}
-
-.lk-line-bad4 {
-    top: 109.5px;
-    left: 111.0px;
-    width: 124.2px;
-    transform: rotate(-40.10deg);
+    top: 74.5px;
+    left: 46.0px;
+    width: 180.0px;
+    transform: rotate(0.00deg);
     background: #ef4444;
     animation: fadeBoth 4s infinite;
 }
 
 .lk-line-good1 {
-    top: 29.5px;
-    left: 31.0px;
-    width: 80.0px;
-    transform: rotate(90.00deg);
+    top: 24.5px;
+    left: 86.0px;
+    width: 100.0px;
+    transform: rotate(0.00deg);
     background: #facc15;
     opacity: 0;
     animation: fadeInGood 4s infinite;
 }
 
 .lk-line-good2 {
-    top: 29.5px;
-    left: 111.0px;
-    width: 80.0px;
-    transform: rotate(90.00deg);
+    top: 124.5px;
+    left: 186.0px;
+    width: 64.0px;
+    transform: rotate(-51.34deg);
     background: #facc15;
     opacity: 0;
     animation: fadeInGood 4s infinite;
 }
 
 .lk-line-good3 {
-    top: 29.5px;
-    left: 206.0px;
-    width: 80.0px;
-    transform: rotate(90.00deg);
+    top: 124.5px;
+    left: 86.0px;
+    width: 64.0px;
+    transform: rotate(-128.66deg);
     background: #facc15;
     opacity: 0;
     animation: fadeInGood 4s infinite;
