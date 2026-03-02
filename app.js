@@ -1480,3 +1480,182 @@ function clearAll() {
         showToast("畫面已清除");
     }
 }
+
+// --- Tab Navigation Logic ---
+const tabBtns = document.querySelectorAll('.tab-btn');
+const pages = document.querySelectorAll('.page');
+
+tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const targetId = btn.dataset.target;
+
+        tabBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        pages.forEach(p => p.classList.remove('active'));
+        document.getElementById(targetId).classList.add('active');
+
+        if (targetId === 'page-planner') {
+            setTimeout(() => map.invalidateSize(), 50);
+        }
+    });
+});
+
+// --- DB Optimizer Logic (Page 3) ---
+const dbDropArea = document.getElementById('dbDropArea');
+const dbInput = document.getElementById('dbInput');
+const dbLogArea = document.getElementById('dbLogArea');
+const dbStratSelect = document.getElementById('dbStratSelect');
+const dbOptSelect = document.getElementById('dbOptSelect');
+
+if (dbDropArea) {
+    function logDb(msg) {
+        dbLogArea.innerHTML += `<div>${msg}</div>`;
+        dbLogArea.scrollTop = dbLogArea.scrollHeight;
+    }
+
+    dbDropArea.addEventListener('click', () => dbInput.click());
+    dbDropArea.addEventListener('dragover', (e) => { e.preventDefault(); dbDropArea.style.borderColor = '#3b82f6'; });
+    dbDropArea.addEventListener('dragleave', (e) => { dbDropArea.style.borderColor = 'rgba(255,255,255,0.2)'; });
+    dbDropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dbDropArea.style.borderColor = 'rgba(255,255,255,0.2)';
+        if (e.dataTransfer.files.length) processDbFile(e.dataTransfer.files[0]);
+    });
+    dbInput.addEventListener('change', (e) => {
+        if (e.target.files.length) processDbFile(e.target.files[0]);
+    });
+
+    async function processDbFile(file) {
+        if (!file.name.endsWith('.db')) {
+            logDb(`<span style="color:#ef4444">錯誤: 請上傳 .db 檔案</span>`);
+            return;
+        }
+        logDb(`<br><span style="color:#60a5fa">--- 開始處理: ${file.name} ---</span>`);
+
+        const stratId = dbStratSelect.value;
+        const optId = dbOptSelect.value;
+
+        const buffer = await file.arrayBuffer();
+        const floatArray = new Float64Array(buffer);
+
+        let floats = [];
+        for (let i = 0; i < floatArray.length; i++) {
+            floats.push(floatArray[i]);
+        }
+
+        let streaks = [];
+        let curStreak = [];
+        let curStart = -1;
+
+        // Helper to check if a number looks like a reasonable coordinate coordinate
+        const isValidCoord = (v) => {
+            return !isNaN(v) && isFinite(v) && v >= -180 && v <= 180 && Math.abs(v) > 1e-4 && Math.abs(v) !== 1.0;
+        };
+
+        for (let i = 0; i < floats.length; i++) {
+            let v = floats[i];
+            if (isValidCoord(v)) {
+                if (curStreak.length === 0) curStart = i;
+                curStreak.push(v);
+            } else {
+                if (curStreak.length > 5) {
+                    streaks.push({ startIdx: curStart, len: curStreak.length, vals: [...curStreak] });
+                }
+                curStreak = [];
+            }
+        }
+        if (curStreak.length > 5) {
+            streaks.push({ startIdx: curStart, len: curStreak.length, vals: [...curStreak] });
+        }
+
+        let routes = [];
+        for (let i = 0; i < streaks.length - 1; i++) {
+            const s1 = streaks[i];
+            const s2 = streaks[i + 1];
+
+            // If two streaks have exactly the same length and it's substantial...
+            if (s1.len === s2.len && s1.len >= 10) {
+                let isLat1 = s1.vals.every(v => v >= -90 && v <= 90); // Realm floats aren't always coordinates, but real routes will have valid Lat ranges
+                if (isLat1) {
+                    routes.push({
+                        len: s1.len,
+                        latStartIdx: s1.startIdx,
+                        lonStartIdx: s2.startIdx,
+                        lats: s1.vals,
+                        lons: s2.vals
+                    });
+                    i++; // Pair consumed
+                }
+            }
+        }
+
+        if (routes.length === 0) {
+            logDb(`<span style="color:#ef4444">找不到任何相符的路線資料集合(需要長度>=10)。</span>`);
+            return;
+        }
+
+        logDb(`成功讀取 <b>${routes.length}</b> 條路線：`);
+
+        for (let r = 0; r < routes.length; r++) {
+            const route = routes[r];
+
+            // Briefly hijack 'points' to use algorithm functions without modifying the global map UI
+            const oldPoints = [...points];
+            points = [];
+            for (let j = 0; j < route.len; j++) {
+                points.push({ lat: route.lats[j], lon: route.lons[j] });
+            }
+
+            // 1. Base Strategy
+            let tour;
+            if (stratId === 'nn') tour = runNearestNeighbor();
+            else if (stratId === 'greedy') tour = runGreedy();
+            else if (stratId === 'insertion') tour = runInsertion();
+            else tour = points.map((_, i) => i);
+
+            // 2. Optimization
+            if (optId === '2opt') tour = run2Opt(tour);
+            else if (optId === 'lk') tour = runLinKernighan(tour);
+            else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
+            else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
+
+            // 3. Write back new order
+            let newLats = new Float64Array(route.len);
+            let newLons = new Float64Array(route.len);
+
+            for (let j = 0; j < route.len; j++) {
+                newLats[j] = route.lats[tour[j]];
+                newLons[j] = route.lons[tour[j]];
+            }
+
+            for (let j = 0; j < route.len; j++) {
+                // We overwrite the actual Float64Array which writes to the ArrayBuffer
+                floatArray[route.latStartIdx + j] = newLats[j];
+                floatArray[route.lonStartIdx + j] = newLons[j];
+            }
+
+            points = oldPoints; // restore original global points
+
+            logDb(`- 路線 ${r + 1}: 成功優化 ${route.len} 個座標... <span style="color:#34d399">完成!</span>`);
+            // Yield frame to update UI
+            await new Promise(res => setTimeout(res, 10));
+        }
+
+        logDb(`所有路線已最佳化。準備下載檔案...`);
+
+        const blob = new Blob([buffer], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const baseName = file.name.replace('.db', '');
+        const suffix = `${stratId}_${optId}`;
+        a.download = `${baseName}_${suffix}.db`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        logDb(`<span style="color:#fbbf24">檔案已下載: ${a.download}</span>`);
+    }
+}

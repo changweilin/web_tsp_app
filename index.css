@@ -33,11 +33,54 @@ body {
 .app-container {
     width: 100%;
     max-width: 1000px;
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 20px;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
     height: 95vh;
+}
+
+.page {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    gap: 20px;
+    min-height: 0;
+    /* Important for flex children to scroll/shrink properly */
+}
+
+.page.active {
+    display: flex;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    padding: 10px 20px;
+}
+
+.tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1rem;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+    color: white;
+    background: var(--primary);
+    box-shadow: 0 4px 14px 0 rgba(59, 130, 246, 0.39);
 }
 
 /* Glassmorphism utility */
@@ -88,11 +131,12 @@ header p {
 .canvas-wrapper {
     position: relative;
     display: flex;
+    flex: 1;
     justify-content: center;
     align-items: center;
     overflow: hidden;
     padding: 0;
-    min-height: 300px;
+    min-height: 400px;
 }
 
 canvas {
@@ -412,6 +456,458 @@ footer.controls {
     transition: background-color 0.2s ease;
 }
 
+
 .dropdown-item:hover {
     background-color: var(--primary);
+}
+
+/* Tutorial Animations */
+.tutorial-card {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.tutorial-card h3 {
+    color: #f8fafc;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 8px;
+    font-size: 1.1rem;
+}
+
+.tutorial-card p {
+    color: #cbd5e1;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.anim-box {
+    width: 100%;
+    height: 150px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+    margin-top: 10px;
+}
+
+.anim-node {
+    width: 12px;
+    height: 12px;
+    background: #f43f5e;
+    border: 2px solid white;
+    border-radius: 50%;
+    position: absolute;
+    z-index: 2;
+}
+
+.anim-line {
+    position: absolute;
+    height: 3px;
+    background: #3b82f6;
+    transform-origin: 0 50%;
+    z-index: 1;
+    opacity: 0;
+}
+
+.anim-text {
+    position: absolute;
+    bottom: 10px;
+    text-align: center;
+    width: 100%;
+    color: white;
+    font-weight: bold;
+    z-index: 3;
+    pointer-events: none;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* NN Animation */
+.nn-line1 {
+    top: 74.5px;
+    left: 31.0px;
+    width: 80.6px;
+    transform: rotate(-29.74deg);
+    animation: drawLine 4s infinite 0.5s;
+}
+
+.nn-line2 {
+    top: 34.5px;
+    left: 101.0px;
+    width: 71.0px;
+    transform: rotate(9.73deg);
+    animation: drawLine 4s infinite 1.5s;
+}
+
+.nn-line3 {
+    top: 46.5px;
+    left: 171.0px;
+    width: 90.5px;
+    transform: rotate(44.10deg);
+    animation: drawLine 4s infinite 2.5s;
+}
+
+/* 2-Opt Animation */
+.opt-line-bad1 {
+    top: 29.5px;
+    left: 51.0px;
+    width: 120.2px;
+    transform: rotate(45.00deg);
+    background: #ef4444;
+    animation: fadeOutBad 4s infinite;
+}
+
+.opt-line-bad2 {
+    top: 114.5px;
+    left: 51.0px;
+    width: 120.2px;
+    transform: rotate(-45.00deg);
+    background: #ef4444;
+    animation: fadeOutBad 4s infinite;
+}
+
+.opt-line-good1 {
+    top: 29.5px;
+    left: 51.0px;
+    width: 85.0px;
+    transform: rotate(90.00deg);
+    background: #34d399;
+    opacity: 0;
+    animation: fadeInGood 4s infinite;
+}
+
+.opt-line-good2 {
+    top: 29.5px;
+    left: 136.0px;
+    width: 85.0px;
+    transform: rotate(90.00deg);
+    background: #34d399;
+    opacity: 0;
+    animation: fadeInGood 4s infinite;
+}
+
+/* Greedy Animation */
+.greedy-line1 {
+    top: 34.5px;
+    left: 101.0px;
+    width: 51.4px;
+    transform: rotate(13.50deg);
+    animation: drawLine 4s infinite 0.5s;
+    background: #34d399;
+}
+
+.greedy-line2 {
+    top: 109.5px;
+    left: 51.0px;
+    width: 53.9px;
+    transform: rotate(-21.80deg);
+    animation: drawLine 4s infinite 1.5s;
+    background: #34d399;
+}
+
+.greedy-line3 {
+    top: 64.5px;
+    left: 166.0px;
+    width: 49.2px;
+    transform: rotate(-66.04deg);
+    animation: drawLine 4s infinite 2.5s;
+    background: #34d399;
+}
+
+/* Insertion Animation */
+.ins-line-base {
+    top: 74.5px;
+    left: 31.0px;
+    width: 140.0px;
+    transform: rotate(0.00deg);
+    opacity: 1;
+    border-top: 2px dashed #94a3b8;
+    background: transparent;
+    height: 0;
+}
+
+.ins-node-new {
+    top: 30px;
+    left: 100px;
+    background: #c084fc;
+    animation: popIn 4s infinite;
+}
+
+.ins-line-new1 {
+    top: 74.5px;
+    left: 31.0px;
+    width: 87.3px;
+    transform: rotate(-23.63deg);
+    background: #c084fc;
+    opacity: 0;
+    animation: fadeInGood 4s infinite 1s;
+}
+
+.ins-line-new2 {
+    top: 39.5px;
+    left: 111.0px;
+    width: 69.5px;
+    transform: rotate(30.26deg);
+    background: #c084fc;
+    opacity: 0;
+    animation: fadeInGood 4s infinite 1s;
+}
+
+/* L-K Animation */
+.lk-line-bad1 {
+    top: 29.5px;
+    left: 31.0px;
+    width: 113.1px;
+    transform: rotate(45.00deg);
+    background: #ef4444;
+    animation: fadeBoth 4s infinite;
+}
+
+.lk-line-bad2 {
+    top: 109.5px;
+    left: 31.0px;
+    width: 113.1px;
+    transform: rotate(-45.00deg);
+    background: #ef4444;
+    animation: fadeBoth 4s infinite;
+}
+
+.lk-line-bad3 {
+    top: 29.5px;
+    left: 111.0px;
+    width: 124.2px;
+    transform: rotate(40.10deg);
+    background: #ef4444;
+    animation: fadeBoth 4s infinite;
+}
+
+.lk-line-bad4 {
+    top: 109.5px;
+    left: 111.0px;
+    width: 124.2px;
+    transform: rotate(-40.10deg);
+    background: #ef4444;
+    animation: fadeBoth 4s infinite;
+}
+
+.lk-line-good1 {
+    top: 29.5px;
+    left: 31.0px;
+    width: 80.0px;
+    transform: rotate(90.00deg);
+    background: #facc15;
+    opacity: 0;
+    animation: fadeInGood 4s infinite;
+}
+
+.lk-line-good2 {
+    top: 29.5px;
+    left: 111.0px;
+    width: 80.0px;
+    transform: rotate(90.00deg);
+    background: #facc15;
+    opacity: 0;
+    animation: fadeInGood 4s infinite;
+}
+
+.lk-line-good3 {
+    top: 29.5px;
+    left: 206.0px;
+    width: 80.0px;
+    transform: rotate(90.00deg);
+    background: #facc15;
+    opacity: 0;
+    animation: fadeInGood 4s infinite;
+}
+
+/* SA Animation */
+.sa-node {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fb923c;
+    position: absolute;
+    left: 100px;
+    animation: bounceTemp 4s infinite;
+}
+
+.sa-bg {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, rgba(239, 68, 68, 0.4), rgba(59, 130, 246, 0.1));
+    animation: coolDown 4s infinite;
+}
+
+/* GA Animation */
+.ga-line1 {
+    width: 200px;
+    height: 4px;
+    top: 40px;
+    left: 20px;
+    background: linear-gradient(90deg, #3b82f6 50%, #c084fc 50%);
+    border-radius: 2px;
+    position: absolute;
+    animation: crossbar 4s infinite;
+}
+
+.ga-line2 {
+    width: 200px;
+    height: 4px;
+    top: 100px;
+    left: 20px;
+    background: linear-gradient(90deg, #c084fc 50%, #3b82f6 50%);
+    border-radius: 2px;
+    position: absolute;
+    animation: crossbar 4s infinite reverse;
+}
+
+@keyframes drawLine {
+
+    0%,
+    10% {
+        opacity: 0;
+        width: 0;
+    }
+
+    20%,
+    90% {
+        opacity: 1;
+        width: var(--w);
+    }
+
+    100% {
+        opacity: 0;
+        width: 0;
+    }
+}
+
+@keyframes fadeOutBad {
+
+    0%,
+    40% {
+        opacity: 1;
+    }
+
+    50%,
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes fadeBoth {
+
+    0%,
+    30% {
+        opacity: 1;
+    }
+
+    40%,
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes fadeInGood {
+
+    0%,
+    35% {
+        opacity: 0;
+    }
+
+    45%,
+    90% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes popIn {
+
+    0%,
+    20% {
+        transform: scale(0);
+        opacity: 0;
+    }
+
+    30%,
+    90% {
+        transform: scale(1);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(0);
+        opacity: 0;
+    }
+}
+
+@keyframes bounceTemp {
+    0% {
+        top: 20px;
+        transform: scale(1.5);
+        background: #ef4444;
+    }
+
+    20% {
+        top: 100px;
+        transform: scale(1.2);
+        background: #f97316;
+    }
+
+    40% {
+        top: 40px;
+        transform: scale(1.1);
+        background: #fbbf24;
+    }
+
+    60% {
+        top: 90px;
+        transform: scale(1.0);
+        background: #a3e635;
+    }
+
+    80%,
+    100% {
+        top: 75px;
+        transform: scale(1.0);
+        background: #3b82f6;
+    }
+}
+
+@keyframes coolDown {
+    0% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+@keyframes crossbar {
+
+    0%,
+    20% {
+        top: 40px;
+        background: linear-gradient(90deg, #3b82f6 50%, #3b82f6 50%);
+    }
+
+    30%,
+    70% {
+        top: 70px;
+        background: linear-gradient(90deg, #3b82f6 50%, #c084fc 50%);
+    }
+
+    80%,
+    100% {
+        top: 100px;
+        background: linear-gradient(90deg, #c084fc 50%, #c084fc 50%);
+    }
 }

@@ -22,165 +22,379 @@
             <p>點擊畫面放置座標點，我們將為您計算出最短且不交叉的巡迴路線！</p>
         </header>
 
-        <main class="canvas-wrapper glass-panel" style="padding: 0; overflow: hidden; position: relative;">
-            <div id="map"
-                style="width: 100%; height: 100%; border-radius: 15px; position: absolute; inset: 0; z-index: 1;"></div>
+        <nav class="tabs glass-panel">
+            <button class="tab-btn active" data-target="page-planner">📍 路線規劃器</button>
+            <button class="tab-btn" data-target="page-tutorial">📚 演算法教學</button>
+            <button class="tab-btn" data-target="page-db">🗄️ 資料庫優化</button>
+        </nav>
 
-            <button id="btnLocation" title="我的位置" class="glass-panel"
-                style="position: absolute; bottom: 25px; right: 15px; z-index: 1000; width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.2); background: rgba(15, 23, 42, 0.7); color: white; cursor: pointer; backdrop-filter: blur(10px);">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4M12 10a2 2 0 100 4 2 2 0 000-4z" />
-                </svg>
-            </button>
+        <div id="page-planner" class="page active">
 
-            <div id="strategyPanel" class="glass-panel"
-                style="position: absolute; top: 15px; left: 15px; z-index: 1000; padding: 15px; min-width: 220px;">
-                <h3
-                    style="margin-bottom: 12px; font-size: 1rem; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-                        <path
-                            d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4">
-                        </path>
+            <main class="canvas-wrapper glass-panel" style="padding: 0; overflow: hidden; position: relative;">
+                <div id="map"
+                    style="width: 100%; height: 100%; border-radius: 15px; position: absolute; inset: 0; z-index: 1;">
+                </div>
+
+                <button id="btnLocation" title="我的位置" class="glass-panel"
+                    style="position: absolute; bottom: 25px; right: 15px; z-index: 1000; width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.2); background: rgba(15, 23, 42, 0.7); color: white; cursor: pointer; backdrop-filter: blur(10px);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+                        <path d="M12 2v4M12 18v4M2 12h4M18 12h4M12 10a2 2 0 100 4 2 2 0 000-4z" />
                     </svg>
-                    策略選擇
-                </h3>
-                <div class="strategy-list">
-                    <!-- Category 1: Base Strategy -->
-                    <div style="margin-bottom: 10px;">
-                        <span
-                            style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">基礎策略</span>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="stratNN" checked>
-                            <span class="color-dot" style="background: #fbbf24;"></span>
-                            <span class="name">最近鄰居法</span>
-                        </label>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="stratGreedy">
-                            <span class="color-dot" style="background: #34d399;"></span>
-                            <span class="name">貪婪演算法</span>
-                        </label>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="stratInsertion">
-                            <span class="color-dot" style="background: #c084fc;"></span>
-                            <span class="name">插入法</span>
-                        </label>
-                    </div>
-
-                    <!-- Category 2: Optimization -->
-                    <div style="margin-bottom: 10px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
-                        <span
-                            style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">優化方式
-                            (可複選)</span>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="optNone" checked>
-                            <span class="name">無 (<span
-                                    style="display: inline-block; width: 12px; height: 2px; background-color: #f8fafc; border-radius: 1px; vertical-align: middle; margin: 0 2px;"></span>)</span>
-                        </label>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="opt2Opt">
-                            <span class="name">2-Opt 優化 (<span
-                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
-                        </label>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="optLK">
-                            <span class="name">L-K 優化 (<span
-                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dotted #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
-                        </label>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="optSA">
-                            <span class="name">退火優化 (<span
-                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
-                        </label>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="optGA">
-                            <span class="name">基因優化 (<span
-                                    style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
-                        </label>
-                    </div>
-
-                    <!-- Category 3: Extra Display -->
-                    <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
-                        <span
-                            style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">額外顯示</span>
-                        <label class="strategy-option">
-                            <input type="checkbox" id="stratInitial">
-                            <span class="color-dot" style="background: #94a3b8;"></span>
-                            <span class="name">初始順序</span>
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div id="elevationPanel" class="glass-panel hidden"
-                style="position: absolute; bottom: 80px; left: 15px; right: 15px; height: 120px; z-index: 1000; padding: 10px; display: flex; flex-direction: column;">
-                <span style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 5px; font-weight: bold;">海拔高度剖面圖
-                    (最佳路線)</span>
-                <svg id="eleChart" width="100%" height="100%" preserveAspectRatio="none">
-                    <polyline id="elePolyline" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" stroke-width="2" />
-                </svg>
-            </div>
-            <div id="loading" class="hidden" style="z-index: 1000;">
-                <div class="spinner"></div>
-                <span id="loadingText"
-                    style="display: block; margin-top: 15px; font-weight: 600; font-size: 0.95rem; color: #f8fafc; letter-spacing: 0.5px; text-align: center;">計算中...</span>
-                <div
-                    style="width: 200px; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; margin-top: 12px; overflow: hidden;">
-                    <div id="progressBar"
-                        style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.3s ease;"></div>
-                </div>
-            </div>
-
-            <div class="stats-panel glass-panel hidden" id="statsPanel" style="z-index: 1000;">
-                <div class="stat-item"
-                    style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                    <div>
-                        <span class="label">總距離</span>
-                        <span class="value" id="totalDistance">0.00</span>
-                    </div>
-                    <button id="btnReplayAll" class="action-button secondary"
-                        style="padding: 4px 10px; font-size: 0.8rem; height: auto;">▶️ 全部慢動作重播</button>
-                </div>
-                <div class="stat-item">
-                    <span class="label">座標點數</span>
-                    <span class="value" id="pointCount">0</span>
-                </div>
-            </div>
-        </main>
-
-        <footer class="controls glass-panel">
-            <input type="file" id="gpxInput" accept=".gpx" class="hidden">
-            <button id="btnLoadGpx" class="btn secondary">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                載入 GPX
-            </button>
-            <button id="btnCalculate" class="btn primary" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-                計算最佳路線
-            </button>
-            <div id="exportDropdown" class="dropdown hidden">
-                <button id="btnExportMenu" class="btn secondary">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    匯出路線 ▼
                 </button>
-                <div class="dropdown-content">
-                    <button id="btnExportGpxItem" class="dropdown-item">打包下載 .gpx</button>
-                    <button id="btnExportKmlItem" class="dropdown-item">打包下載 .kml</button>
-                    <button id="btnExportGeoJsonItem" class="dropdown-item">打包下載 .geojson</button>
+
+                <div id="strategyPanel" class="glass-panel"
+                    style="position: absolute; top: 15px; left: 15px; z-index: 1000; padding: 15px; min-width: 220px; max-height: calc(100% - 30px); overflow-y: auto;">
+                    <h3
+                        style="margin-bottom: 12px; font-size: 1rem; color: #f8fafc; display: flex; align-items: center; gap: 8px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18"
+                            height="18">
+                            <path
+                                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4">
+                            </path>
+                        </svg>
+                        策略選擇
+                    </h3>
+                    <div class="strategy-list">
+                        <!-- Category 1: Base Strategy -->
+                        <div style="margin-bottom: 10px;">
+                            <span
+                                style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">基礎策略</span>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="stratNN" checked>
+                                <span class="color-dot" style="background: #fbbf24;"></span>
+                                <span class="name">最近鄰居法</span>
+                            </label>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="stratGreedy">
+                                <span class="color-dot" style="background: #34d399;"></span>
+                                <span class="name">貪婪演算法</span>
+                            </label>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="stratInsertion">
+                                <span class="color-dot" style="background: #c084fc;"></span>
+                                <span class="name">插入法</span>
+                            </label>
+                        </div>
+
+                        <!-- Category 2: Optimization -->
+                        <div
+                            style="margin-bottom: 10px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                            <span
+                                style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">優化方式
+                                (可複選)</span>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="optNone" checked>
+                                <span class="name">無 (<span
+                                        style="display: inline-block; width: 12px; height: 2px; background-color: #f8fafc; border-radius: 1px; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                            </label>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="opt2Opt">
+                                <span class="name">2-Opt 優化 (<span
+                                        style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                            </label>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="optLK">
+                                <span class="name">L-K 優化 (<span
+                                        style="display: inline-block; width: 12px; height: 0; border-top: 2px dotted #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                            </label>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="optSA">
+                                <span class="name">退火優化 (<span
+                                        style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                            </label>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="optGA">
+                                <span class="name">基因優化 (<span
+                                        style="display: inline-block; width: 12px; height: 0; border-top: 2px dashed #f8fafc; vertical-align: middle; margin: 0 2px;"></span>)</span>
+                            </label>
+                        </div>
+
+                        <!-- Category 3: Extra Display -->
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+                            <span
+                                style="font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px; display: block;">額外顯示</span>
+                            <label class="strategy-option">
+                                <input type="checkbox" id="stratInitial">
+                                <span class="color-dot" style="background: #94a3b8;"></span>
+                                <span class="name">初始順序</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="elevationPanel" class="glass-panel hidden"
+                    style="position: absolute; bottom: 80px; left: 15px; right: 15px; height: 120px; z-index: 1000; padding: 10px; display: flex; flex-direction: column;">
+                    <span style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 5px; font-weight: bold;">海拔高度剖面圖
+                        (最佳路線)</span>
+                    <svg id="eleChart" width="100%" height="100%" preserveAspectRatio="none">
+                        <polyline id="elePolyline" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" stroke-width="2" />
+                    </svg>
+                </div>
+                <div id="loading" class="hidden" style="z-index: 1000;">
+                    <div class="spinner"></div>
+                    <span id="loadingText"
+                        style="display: block; margin-top: 15px; font-weight: 600; font-size: 0.95rem; color: #f8fafc; letter-spacing: 0.5px; text-align: center;">計算中...</span>
+                    <div
+                        style="width: 200px; height: 8px; background: rgba(255,255,255,0.2); border-radius: 4px; margin-top: 12px; overflow: hidden;">
+                        <div id="progressBar"
+                            style="width: 0%; height: 100%; background: #3b82f6; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+
+                <div class="stats-panel glass-panel hidden" id="statsPanel" style="z-index: 1000;">
+                    <div class="stat-item"
+                        style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <div>
+                            <span class="label">總距離</span>
+                            <span class="value" id="totalDistance">0.00</span>
+                        </div>
+                        <button id="btnReplayAll" class="action-button secondary"
+                            style="padding: 4px 10px; font-size: 0.8rem; height: auto;">▶️ 全部慢動作重播</button>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">座標點數</span>
+                        <span class="value" id="pointCount">0</span>
+                    </div>
+                </div>
+            </main>
+
+            <footer class="controls glass-panel">
+                <input type="file" id="gpxInput" accept=".gpx" class="hidden">
+                <button id="btnLoadGpx" class="btn secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    載入 GPX
+                </button>
+                <button id="btnCalculate" class="btn primary" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                    </svg>
+                    計算最佳路線
+                </button>
+                <div id="exportDropdown" class="dropdown hidden">
+                    <button id="btnExportMenu" class="btn secondary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        匯出路線 ▼
+                    </button>
+                    <div class="dropdown-content">
+                        <button id="btnExportGpxItem" class="dropdown-item">打包下載 .gpx</button>
+                        <button id="btnExportKmlItem" class="dropdown-item">打包下載 .kml</button>
+                        <button id="btnExportGeoJsonItem" class="dropdown-item">打包下載 .geojson</button>
+                    </div>
+                </div>
+                <button id="btnClear" class="btn secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    </svg>
+                    清除畫面
+                </button>
+            </footer>
+        </div>
+
+        <!-- Page 2: Tutorial -->
+        <div id="page-tutorial" class="page">
+            <div class="glass-panel"
+                style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;">
+                <h2 style="color: #60a5fa; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+                    演算法教學與動畫</h2>
+                <p>這裡將會以簡單直觀的方式介紹不同的 TSP 策略是如何找到最佳化路徑的。</p>
+                <div id="tutorialContent"
+                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 30px;">
+                    <!-- Column 1: Base Strategies -->
+                    <div style="display: flex; flex-direction: column; gap: 20px;">
+                        <h3
+                            style="color: #94a3b8; font-size: 1.1rem; border-bottom: 2px solid rgba(255,255,255,0.1); padding-bottom: 5px;">
+                            基礎策略 (產生初始路徑)</h3>
+
+                        <!-- NN -->
+                        <div class="tutorial-card">
+                            <h3>1. 最近鄰居法 (Nearest Neighbor)</h3>
+                            <p>從起點開始，每次都尋找<strong>距離目前位置最近的未訪問點</strong>，直到走完全部點。速度極快，但在最後幾步常因為只剩遠處的點而產生極長的路徑交叉。</p>
+                            <div class="anim-box">
+                                <div class="anim-node" style="top: 70px; left: 25px;"></div>
+                                <div class="anim-node" style="top: 30px; left: 95px;"></div>
+                                <div class="anim-node" style="top: 42px; left: 165px;"></div>
+                                <div class="anim-node" style="top: 105px; left: 230px;"></div>
+                                <div class="anim-line nn-line1" style="--w: 80px;"></div>
+                                <div class="anim-line nn-line2" style="--w: 70px;"></div>
+                                <div class="anim-line nn-line3" style="--w: 90px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Greedy -->
+                        <div class="tutorial-card">
+                            <h3>2. 貪婪演算法 (Greedy)</h3>
+                            <p>一開始不決定起點，而是將所有可能的連線按長短排序，<strong>優先選擇最短的線段</strong>。只要不產生提早封閉的迴圈，或讓一個點連出三條線就加入。比 NN
+                                稍慢但結果較好。</p>
+                            <div class="anim-box">
+                                <div class="anim-node" style="top: 30px; left: 95px;"></div>
+                                <div class="anim-node" style="top: 42px; left: 145px;"></div>
+                                <div class="anim-node" style="top: 105px; left: 45px;"></div>
+                                <div class="anim-node" style="top: 85px; left: 95px;"></div>
+                                <div class="anim-node" style="top: 60px; left: 160px;"></div>
+                                <div class="anim-node" style="top: 15px; left: 180px;"></div>
+
+                                <div class="anim-line greedy-line1" style="--w: 50px;"></div>
+                                <div class="anim-line greedy-line2" style="--w: 50px;"></div>
+                                <div class="anim-line greedy-line3" style="--w: 45px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Insertion -->
+                        <div class="tutorial-card">
+                            <h3>3. 插入法 (Insertion)</h3>
+                            <p>先從少數幾個點構成一個小迴圈，然後慢慢把其餘的點以<strong>「增加距離最少」</strong>的方式「插入」到既有的迴圈線段之間。非常穩定，很少有嚴重的交叉錯誤。</p>
+                            <div class="anim-box">
+                                <div class="anim-node" style="top: 70px; left: 25px;"></div>
+                                <div class="anim-node" style="top: 70px; left: 165px;"></div>
+                                <div class="anim-node ins-node-new" style="top: 35px; left: 105px;"></div>
+
+                                <div class="anim-line ins-line-base"></div>
+                                <div class="anim-line ins-line-new1" style="--w: 85px;"></div>
+                                <div class="anim-line ins-line-new2" style="--w: 85px;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Optimizations -->
+                    <div style="display: flex; flex-direction: column; gap: 20px;">
+                        <h3
+                            style="color: #c084fc; font-size: 1.1rem; border-bottom: 2px dotted rgba(255,255,255,0.2); padding-bottom: 5px;">
+                            優化疊加 (改進已有路徑)</h3>
+
+                        <!-- 2-Opt -->
+                        <div class="tutorial-card">
+                            <h3>A. 2-Opt 優化</h3>
+                            <p>專門用來<strong>消除路線交叉</strong>的局部優化法。隨機挑選兩條不相鄰的線段，如果發現它們交叉了，就把這兩段路線「解開並交叉互換連接」，通常能大幅降低總距離。
+                            </p>
+                            <div class="anim-box">
+                                <div class="anim-node" style="top: 25px; left: 45px;"></div>
+                                <div class="anim-node" style="top: 25px; left: 130px;"></div>
+                                <div class="anim-node" style="top: 110px; left: 45px;"></div>
+                                <div class="anim-node" style="top: 110px; left: 130px;"></div>
+
+                                <div class="anim-line opt-line-bad1" style="--w: 120px;"></div>
+                                <div class="anim-line opt-line-bad2" style="--w: 120px;"></div>
+                                <div class="anim-line opt-line-good1" style="--w: 85px;"></div>
+                                <div class="anim-line opt-line-good2" style="--w: 85px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- L-K -->
+                        <div class="tutorial-card">
+                            <h3>B. Lin-Kernighan (L-K)</h3>
+                            <p>比 2-Opt 強大，可以一次考慮更換 3 條、4 條甚至多條線段的連接方式 (在這裡程式中是以 Double-Bridge Kick 組合實作)。適合逃離 2-opt
+                                就會卡住的局部最佳解。</p>
+                            <div class="anim-box">
+                                <div class="anim-node" style="top: 25px; left: 25px;"></div>
+                                <div class="anim-node" style="top: 25px; left: 105px;"></div>
+                                <div class="anim-node" style="top: 25px; left: 200px;"></div>
+                                <div class="anim-node" style="top: 105px; left: 25px;"></div>
+                                <div class="anim-node" style="top: 105px; left: 105px;"></div>
+                                <div class="anim-node" style="top: 105px; left: 200px;"></div>
+
+                                <div class="anim-line lk-line-bad1" style="--w: 106px;"></div>
+                                <div class="anim-line lk-line-bad2" style="--w: 106px;"></div>
+                                <div class="anim-line lk-line-bad3" style="--w: 106px;"></div>
+                                <div class="anim-line lk-line-bad4" style="--w: 106px;"></div>
+
+                                <div class="anim-line lk-line-good1" style="--w: 80px;"></div>
+                                <div class="anim-line lk-line-good2" style="--w: 95px;"></div>
+                                <div class="anim-line lk-line-good3" style="--w: 80px;"></div>
+                            </div>
+                        </div>
+
+                        <!-- SA -->
+                        <div class="tutorial-card">
+                            <h3>C. 模擬退火 (Simulated Annealing)</h3>
+                            <p>靈感來自冶金退火。在初期，算法有較高的機率容忍並接受「變長、變差」的路線，這讓它有機會跳出局部最佳解的陷阱。隨著時間「降溫」，接受爛路線的機率越來越低，最終收斂出極佳解。</p>
+                            <div class="anim-box">
+                                <div class="sa-bg"></div>
+                                <div class="sa-node"></div>
+                                <div class="anim-text">
+                                    熱度 ➔ 冷卻</div>
+                            </div>
+                        </div>
+
+                        <!-- GA -->
+                        <div class="tutorial-card">
+                            <h3>D. 基因演算法 (Genetic Algorithm)</h3>
+                            <p>模擬生物演化。同時維護數十條不同的路線方案 (族群)，計算它們的適應度 (總距離)。優秀的路線會被挑選出進行「交配互換位置」與「突變」，經過數百個世代後，基因演化出最佳路徑。
+                            </p>
+                            <div class="anim-box">
+                                <div class="ga-line1"></div>
+                                <div class="ga-line2"></div>
+                                <div class="anim-text" style="top: 60px; bottom: auto;">
+                                    DNA 交配</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <button id="btnClear" class="btn secondary">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                </svg>
-                清除畫面
-            </button>
-        </footer>
+        </div>
+
+        <!-- Page 3: DB Optimizer -->
+        <div id="page-db" class="page">
+            <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column; gap: 20px;">
+                <h2 style="color: #34d399; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Realm
+                    資料庫批量優化</h2>
+                <p style="color: var(--text-muted);">上傳您的 <code>gpsjoystick_*.db</code> 檔案，我們將自動分析並修改內部路徑的座標順序，並產生新的 DB
+                    給您匯入。</p>
+
+                <div style="display: flex; gap: 20px;">
+                    <!-- DB Strategy Selection -->
+                    <div class="glass-panel" style="flex: 1;">
+                        <h3 style="margin-bottom: 10px; font-size: 1rem;">優化設定</h3>
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div>
+                                <label
+                                    style="display: block; font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px;">基礎策略
+                                    (單選)</label>
+                                <select id="dbStratSelect" class="btn secondary"
+                                    style="width: 100%; text-align: left; background: rgba(15,23,42,0.8);">
+                                    <option value="nn">最近鄰居法</option>
+                                    <option value="greedy">貪婪演算法</option>
+                                    <option value="insertion">插入法</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label
+                                    style="display: block; font-size: 0.85rem; color: #94a3b8; font-weight: bold; margin-bottom: 5px;">優化方式
+                                    (單選)</label>
+                                <select id="dbOptSelect" class="btn secondary"
+                                    style="width: 100%; text-align: left; background: rgba(15,23,42,0.8);">
+                                    <option value="none">無 (僅套用基礎策略)</option>
+                                    <option value="2opt" selected>2-Opt 優化</option>
+                                    <option value="lk">L-K 優化</option>
+                                    <option value="sa">退火優化</option>
+                                    <option value="ga">基因優化</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DB File Drop Area -->
+                    <div class="glass-panel" id="dbDropArea"
+                        style="flex: 2; border: 2px dashed rgba(255,255,255,0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px; cursor: pointer; transition: all 0.2s;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" width="48" height="48"
+                            style="margin-bottom: 15px;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                        </svg>
+                        <h3 style="color: #f8fafc; margin-bottom: 8px;">點擊或拖曳 .db 檔案至此</h3>
+                        <p style="color: #94a3b8; font-size: 0.9rem;">支援 GPS Joystick 匯出的 Realm 資料庫</p>
+                        <input type="file" id="dbInput" accept=".db" class="hidden">
+                    </div>
+                </div>
+
+                <div id="dbLogArea" class="glass-panel"
+                    style="flex: 1; background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85rem; color: #a78bfa; overflow-y: auto; padding: 15px; margin-top: 10px; max-height: 300px;">
+                    等待匯入檔案...
+                </div>
+            </div>
+        </div>
 
     </div>
 
