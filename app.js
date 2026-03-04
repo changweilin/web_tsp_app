@@ -1448,7 +1448,8 @@ function clearAll() {
     origGpxDoc = null;
     currentCalculatedRoutes = [];
     origFileName = "route";
-    localStorage.removeItem('tsp_filename'); // Clear filename memory when map is cleared
+    localStorage.removeItem('tsp_filename');
+    localStorage.removeItem('tsp_points');
 
     pointGroup.clearLayers();
     if (initialPolyline) map.removeLayer(initialPolyline);
@@ -1785,6 +1786,13 @@ if (dbDropArea) {
         // ====== 4. 逐條路線優化 ======
         const tStart = Date.now();
 
+        // 時間格式化輔助
+        function fmtTime(s) {
+            s = Math.round(s);
+            if (s < 60) return `${s}s`;
+            return `${Math.floor(s / 60)}m ${s % 60}s`;
+        }
+
         // 寫回輔助函式（Worker 與 fallback 共用）
         function applyTour(r, tour) {
             const { start, end, len } = routes[r];
@@ -1804,9 +1812,16 @@ if (dbDropArea) {
                 view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, newLons[j], true);
             }
             const routeLabel = getRouteName(lats, lons, r);
-            const elapsed = ((Date.now() - tStart) / 1000).toFixed(1);
-            setProgress(r + 1, `路線 ${r + 1} / ${totalRoutes}  ·  已用 ${elapsed}s`, routeLabel);
-            logDb(`- [${routeLabel}]：${len} pts <span style="color:#34d399">✓</span>`);
+            const elapsedSec = (Date.now() - tStart) / 1000;
+            const done = r + 1;
+            const remaining = totalRoutes - done;
+            const eta = remaining > 0 ? (elapsedSec / done) * remaining : 0;
+            const etaStr = remaining > 0 ? `剩約 ${fmtTime(eta)}` : '即將完成';
+            setProgress(done,
+                `路線 ${done} / ${totalRoutes}  ·  已用 ${fmtTime(elapsedSec)}  ·  ${etaStr}`,
+                `${routeLabel}（${len} 點）`
+            );
+            logDb(`- [${routeLabel}]：${len} 點 <span style="color:#34d399">✓</span>`);
         }
 
         // 嘗試用 Web Worker（不阻塞主執行緒，log 即時顯示）
