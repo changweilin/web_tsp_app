@@ -1513,7 +1513,8 @@ const dbProgressBar  = document.getElementById('dbProgressBar');
 const dbProgressLabel = document.getElementById('dbProgressLabel');
 const dbProgressPct  = document.getElementById('dbProgressPct');
 const dbProgressRoute  = document.getElementById('dbProgressRoute');
-const dbSkipLarge      = document.getElementById('dbSkipLarge');
+const dbSkipLarge           = document.getElementById('dbSkipLarge');
+const dbSkipLargeThreshold  = document.getElementById('dbSkipLargeThreshold');
 const dbTimeoutSelect  = document.getElementById('dbTimeoutSelect');
 const dbThresholdSlider= document.getElementById('dbThresholdSlider');
 const dbThresholdVal   = document.getElementById('dbThresholdVal');
@@ -1549,7 +1550,8 @@ if (dbDropArea) {
         const stratId = dbStratSelect.value;
         const optId   = dbOptSelect.value;
 
-        const skipLarge       = dbSkipLarge.checked;
+        const skipLarge          = dbSkipLarge.checked;
+        const skipLargeThreshold = parseInt(dbSkipLargeThreshold.value, 10) || 256;
         const routeTimeoutMs  = parseInt(dbTimeoutSelect.value, 10);
         const improvThreshold = parseInt(dbThresholdSlider.value, 10) / 100;
 
@@ -1801,8 +1803,8 @@ if (dbDropArea) {
         // Build active route index list (skip large if option enabled)
         const activeRouteIndices = [];
         for (let i = 0; i < routes.length; i++) {
-            if (skipLarge && routes[i].len > 256) {
-                logDb(`- [${routes[i].name}]：${routes[i].len} 點 <span style="color:#f59e0b">略過（超過 256 點）</span>`);
+            if (skipLarge && routes[i].len > skipLargeThreshold) {
+                logDb(`- [${routes[i].name}]：${routes[i].len} 點 <span style="color:#f59e0b">略過（超過 ${skipLargeThreshold} 點）</span>`);
             } else {
                 activeRouteIndices.push(i);
             }

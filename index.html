@@ -377,7 +377,10 @@
                             <div>
                                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                                     <input type="checkbox" id="dbSkipLarge">
-                                    略過超過 256 點的路線
+                                    略過超過
+                                    <input type="number" id="dbSkipLargeThreshold" value="256" min="1" max="9999"
+                                        style="width:60px;padding:2px 4px;background:rgba(15,23,42,0.8);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:#f8fafc;text-align:center;">
+                                    點的路線
                                 </label>
                             </div>
 
