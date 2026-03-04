@@ -1507,6 +1507,11 @@ const dbInput = document.getElementById('dbInput');
 const dbLogArea = document.getElementById('dbLogArea');
 const dbStratSelect = document.getElementById('dbStratSelect');
 const dbOptSelect = document.getElementById('dbOptSelect');
+const dbProgressWrap = document.getElementById('dbProgressWrap');
+const dbProgressBar  = document.getElementById('dbProgressBar');
+const dbProgressLabel = document.getElementById('dbProgressLabel');
+const dbProgressPct  = document.getElementById('dbProgressPct');
+const dbProgressRoute = document.getElementById('dbProgressRoute');
 
 if (dbDropArea) {
     function logDb(msg) {
@@ -1531,131 +1536,338 @@ if (dbDropArea) {
             logDb(`<span style="color:#ef4444">錯誤: 請上傳 .db 檔案</span>`);
             return;
         }
-        logDb(`<br><span style="color:#60a5fa">--- 開始處理: ${file.name} ---</span>`);
 
         const stratId = dbStratSelect.value;
-        const optId = dbOptSelect.value;
+        const optId   = dbOptSelect.value;
 
-        const buffer = await file.arrayBuffer();
-        const floatArray = new Float64Array(buffer);
+        // 人類可讀的 TSP 方法名稱（用於檔名後綴）
+        const stratLabel = { nn: 'nn', greedy: 'greedy', insertion: 'ins' }[stratId] || stratId;
+        const optLabel   = { none: 'noopt', '2opt': '2opt', lk: 'lk', sa: 'sa', ga: 'ga' }[optId] || optId;
+        const methodSuffix = `${stratLabel}_${optLabel}`;
 
-        let floats = [];
-        for (let i = 0; i < floatArray.length; i++) {
-            floats.push(floatArray[i]);
-        }
+        logDb(`<br><span style="color:#60a5fa">--- 開始處理: ${file.name} ---</span>`);
+        logDb(`<span style="color:#94a3b8">TSP 方法：${stratLabel.toUpperCase()} + ${optLabel.toUpperCase()}</span>`);
 
-        let streaks = [];
-        let curStreak = [];
-        let curStart = -1;
+        // 禁用拖放區避免重複觸發
+        dbDropArea.style.pointerEvents = 'none';
+        dbDropArea.style.opacity = '0.5';
 
-        // Helper to check if a number looks like a reasonable coordinate coordinate
-        const isValidCoord = (v) => {
-            return !isNaN(v) && isFinite(v) && v >= -180 && v <= 180 && Math.abs(v) > 1e-4 && Math.abs(v) !== 1.0;
-        };
+        // 顯示進度條
+        dbProgressWrap.style.display = 'flex';
+        dbProgressBar.style.width = '0%';
+        dbProgressPct.textContent = '0%';
+        dbProgressLabel.textContent = '讀取檔案...';
+        dbProgressRoute.textContent = '';
 
-        for (let i = 0; i < floats.length; i++) {
-            let v = floats[i];
-            if (isValidCoord(v)) {
-                if (curStreak.length === 0) curStart = i;
-                curStreak.push(v);
-            } else {
-                if (curStreak.length > 5) {
-                    streaks.push({ startIdx: curStart, len: curStreak.length, vals: [...curStreak] });
-                }
-                curStreak = [];
-            }
-        }
-        if (curStreak.length > 5) {
-            streaks.push({ startIdx: curStart, len: curStreak.length, vals: [...curStreak] });
-        }
+        const buffer  = await file.arrayBuffer();
+        // ★ 立即複製一份作為寫入目標，保留原始 buffer 不動
+        const workBuf = buffer.slice(0);
+        const bytes   = new Uint8Array(buffer);   // 只讀，用於掃描名稱與 header
 
-        let routes = [];
-        for (let i = 0; i < streaks.length - 1; i++) {
-            const s1 = streaks[i];
-            const s2 = streaks[i + 1];
+        // ====== 1. 從 DB 二進位掃描路線名稱 ======
+        // Realm DB 以 AAAA(0x41414141) + 0x11 + 0x00 + 0x00 + length + UTF-8 string 儲存字串
+        logDb(`<span style="color:#94a3b8">掃描路線名稱...</span>`);
+        await new Promise(res => setTimeout(res, 5));
 
-            // If two streaks have exactly the same length and it's substantial...
-            if (s1.len === s2.len && s1.len >= 10) {
-                let isLat1 = s1.vals.every(v => v >= -90 && v <= 90); // Realm floats aren't always coordinates, but real routes will have valid Lat ranges
-                if (isLat1) {
-                    routes.push({
-                        len: s1.len,
-                        latStartIdx: s1.startIdx,
-                        lonStartIdx: s2.startIdx,
-                        lats: s1.vals,
-                        lons: s2.vals
-                    });
-                    i++; // Pair consumed
+        const decoder = new TextDecoder('utf-8');
+        const allDbNames = [];
+        for (let i = 0; i <= bytes.length - 8; i++) {
+            if (bytes[i] === 0x41 && bytes[i+1] === 0x41 && bytes[i+2] === 0x41 && bytes[i+3] === 0x41 &&
+                bytes[i+4] === 0x11 && bytes[i+5] === 0x00 && bytes[i+6] === 0x00) {
+                const len = bytes[i + 7];
+                if (len >= 2 && i + 8 + len <= bytes.length) {
+                    try {
+                        const name = decoder.decode(bytes.subarray(i + 8, i + 8 + len)).replace(/\0/g, '').trim();
+                        if (name.length >= 2 && !name.startsWith('http') &&
+                            !name.includes('Landmark') && !name.includes('Recreational Area')) {
+                            allDbNames.push(name);
+                        }
+                    } catch (e) { /* skip non-UTF-8 */ }
                 }
             }
         }
 
-        if (routes.length === 0) {
-            logDb(`<span style="color:#ef4444">找不到任何相符的路線資料集合(需要長度>=10)。</span>`);
+        // ====== 2. 掃描座標資料（Realm leaf-node 串流解析法）======
+        // Realm 以 B-tree 儲存座標：所有 lat 值連續存為一個大陣列，所有 lon 值另一個大陣列，
+        // 各自分割成 1000 元素的 leaf node（header = AAAA 0x0C 0x00 0x03 0xE8）。
+        // 路線邊界由 lat 與 lon 同時出現大幅跳躍（> 0.3°）來偵測。
+        logDb(`<span style="color:#94a3b8">掃描座標資料 (Realm leaf-node 格式)...</span>`);
+        await new Promise(res => setTimeout(res, 5));
+
+        // view 指向複製品 workBuf，所有 setFloat64 寫入都進 workBuf，原始 buffer 不受影響
+        const view = new DataView(workBuf);
+
+        // 2a. 找所有 AAAA+0x0C+0x00+0x03+0xE8 header（8-byte 對齊掃描）
+        const leafHdrOffsets = [];
+        for (let i = 0; i + 7 < bytes.length; i += 8) {
+            if (bytes[i]===0x41 && bytes[i+1]===0x41 && bytes[i+2]===0x41 && bytes[i+3]===0x41 &&
+                bytes[i+4]===0x0C && bytes[i+5]===0x00 && bytes[i+6]===0x03 && bytes[i+7]===0xE8) {
+                leafHdrOffsets.push(i);
+            }
+        }
+
+        // 2b. 將連續 header 分組（相鄰 header 間距 8008 = 8 header + 1000×8 data bytes）
+        const allRuns = [];
+        if (leafHdrOffsets.length > 0) {
+            let curRun2 = [leafHdrOffsets[0]];
+            for (let k = 1; k < leafHdrOffsets.length; k++) {
+                if (leafHdrOffsets[k] === leafHdrOffsets[k-1] + 8008) {
+                    curRun2.push(leafHdrOffsets[k]);
+                } else {
+                    allRuns.push([...curRun2]);
+                    curRun2 = [leafHdrOffsets[k]];
+                }
+            }
+            allRuns.push(curRun2);
+        }
+
+        // 2c. 過濾座標 run（首值非零、有限、|v| > 0.001），按檔案位置排序
+        const coordRuns = allRuns
+            .filter(r => {
+                const v = view.getFloat64(r[0] + 8, true);
+                return isFinite(v) && Math.abs(v) > 0.001;
+            })
+            .sort((a, b) => a[0] - b[0]);
+
+        if (coordRuns.length < 2) {
+            logDb(`<span style="color:#ef4444">無法找到完整座標資料（需要 lat + lon 兩個 leaf-node run）。</span>`);
             return;
         }
 
-        logDb(`成功讀取 <b>${routes.length}</b> 條路線：`);
+        const latRun = coordRuns[0]; // 第一個 run = 緯度 (lat)
+        const lonRun = coordRuns[1]; // 第二個 run = 經度 (lon)
+        const nodeCount = Math.min(latRun.length, lonRun.length);
+        const totalPts = nodeCount * 1000;
 
-        for (let r = 0; r < routes.length; r++) {
-            const route = routes[r];
+        // 2d. 讀取全部 lat / lon 值到連續陣列
+        const allLats = new Float64Array(totalPts);
+        const allLons = new Float64Array(totalPts);
+        for (let k = 0; k < nodeCount; k++) {
+            for (let j = 0; j < 1000; j++) {
+                allLats[k * 1000 + j] = view.getFloat64(latRun[k] + 8 + j * 8, true);
+                allLons[k * 1000 + j] = view.getFloat64(lonRun[k] + 8 + j * 8, true);
+            }
+        }
 
-            // Briefly hijack 'points' to use algorithm functions without modifying the global map UI
-            const oldPoints = [...points];
-            points = [];
-            for (let j = 0; j < route.len; j++) {
-                points.push({ lat: route.lats[j], lon: route.lons[j] });
+        // 2e. 偵測路線邊界：lat 與 lon 同時跳躍 > 0.3°（約 30 km）
+        const JUMP_THRESH = 0.3;
+        const routeStarts = [0];
+        for (let i = 1; i < totalPts; i++) {
+            if (Math.abs(allLats[i] - allLats[i-1]) > JUMP_THRESH &&
+                Math.abs(allLons[i] - allLons[i-1]) > JUMP_THRESH) {
+                routeStarts.push(i);
+            }
+        }
+        routeStarts.push(totalPts);
+
+        // 2f. 建立路線物件（過濾 < 10 點的雜訊片段）
+        let routes = [];
+        for (let r = 0; r < routeStarts.length - 1; r++) {
+            const start = routeStarts[r], end = routeStarts[r + 1];
+            if (end - start >= 10) routes.push({ start, end, len: end - start });
+        }
+
+        if (routes.length === 0) {
+            logDb(`<span style="color:#ef4444">找不到任何路線資料（需要長度 ≥ 10 的座標序列）。</span>`);
+            return;
+        }
+
+        // ====== 3. 名稱與路徑一對一驗證 ======
+        logDb(`<br><span style="color:#c084fc; font-weight:bold;">📋 名稱與路徑一對一驗證</span>`);
+        logDb(`資料庫路線名稱數量：<b style="color:#f8fafc">${allDbNames.length}</b> 條`);
+        logDb(`具備座標資料路線數量：<b style="color:#f8fafc">${routes.length}</b> 條`);
+
+        // 檢查重複名稱
+        const nameCount = {};
+        allDbNames.forEach(n => nameCount[n] = (nameCount[n] || 0) + 1);
+        const duplicates = Object.entries(nameCount).filter(([, c]) => c > 1);
+
+        if (allDbNames.length === routes.length && duplicates.length === 0) {
+            logDb(`<span style="color:#34d399; font-weight:bold;">✅ 驗證通過：名稱與座標路線完全一對一配對！</span>`);
+        } else {
+            if (allDbNames.length !== routes.length) {
+                const diff = allDbNames.length - routes.length;
+                if (diff > 0) {
+                    logDb(`<span style="color:#fbbf24;">⚠ 名稱（${allDbNames.length}）多於座標路線（${routes.length}），差異 ${diff} 條</span>`);
+                    logDb(`&nbsp;&nbsp;└ ${diff} 條路線名稱尚無對應座標資料（可能為未下載的範本路線）`);
+                } else {
+                    logDb(`<span style="color:#ef4444;">⚠ 座標路線（${routes.length}）多於名稱（${allDbNames.length}），差異 ${Math.abs(diff)} 條</span>`);
+                    logDb(`&nbsp;&nbsp;└ ${Math.abs(diff)} 條座標路線缺少對應名稱`);
+                }
+            }
+            if (duplicates.length > 0) {
+                logDb(`<span style="color:#fbbf24;">⚠ 發現 ${duplicates.length} 個重複路線名稱：</span>`);
+                duplicates.slice(0, 5).forEach(([name, count]) =>
+                    logDb(`&nbsp;&nbsp;└ "${name}" 重複 ${count} 次`)
+                );
+                if (duplicates.length > 5) logDb(`&nbsp;&nbsp;└ ...（共 ${duplicates.length} 個）`);
+            }
+            logDb(`<span style="color:#60a5fa;">→ 將對 ${routes.length} 條含座標資料的路線進行優化</span>`);
+        }
+
+        // 地理關鍵字輔助辨識（用於日誌顯示名稱）
+        function geoKeyword(lat, lon) {
+            if (lat >= 21.5 && lat <= 25.5 && lon >= 119.5 && lon <= 122.5) return '台灣';
+            if (lat >= 26   && lat <= 46   && lon >= 127   && lon <= 146  ) return '日本';
+            if (lat >= 33   && lat <= 38.5 && lon >= 124.5 && lon <= 130  ) return '韓國';
+            if (lat >= 14   && lat <= 24   && lon >= 100   && lon <= 110  ) return '越南';
+            if (lat >= 5    && lat <= 21   && lon >= 97    && lon <= 105  ) return '泰國';
+            if (lat >= 35   && lat <= 44   && lon >= -10   && lon <= 5   ) return '西班牙';
+            if (lat >= 41   && lat <= 52   && lon >= -5    && lon <= 9   ) return '法國';
+            if (lat >= 47   && lat <= 56   && lon >= 5     && lon <= 15  ) return '德國';
+            if (lat >= 49   && lat <= 59   && lon >= -8    && lon <= 2   ) return '英國';
+            if (lat >= 24   && lat <= 49   && lon >= -125  && lon <= -66 ) return '美國';
+            if (lat >= -44  && lat <= -10  && lon >= 113   && lon <= 154 ) return '澳洲';
+            if (lat >= -52  && lat <= -22  && lon >= -73   && lon <= -35 ) return '巴西';
+            if (lat >= 36   && lat <= 42   && lon >= 26    && lon <= 45  ) return '土耳其';
+            if (lat >= 36   && lat <= 43   && lon >= 20    && lon <= 28  ) return '希臘';
+            if (lat >= 1    && lat <= 1.5  && lon >= 103   && lon <= 105 ) return '新加坡';
+            if (lat >= 51   && lat <= 54   && lon >= 3     && lon <= 8   ) return '荷蘭';
+            if (lat >= 49.5 && lat <= 51.5 && lon >= 2     && lon <= 6.5 ) return '比利時';
+            if (lat >= -47  && lat <= -34  && lon >= 166   && lon <= 178 ) return '紐西蘭';
+            if (lat >= 22   && lat <= 35   && lon >= 50    && lon <= 60  ) return '阿拉伯';
+            if (lat >= 50   && lat <= 71   && lon >= 37    && lon <= 68  ) return '俄';
+            if (lat >= 49   && lat <= 55   && lon >= 12    && lon <= 23  ) return '捷克';
+            if (lat >= 47   && lat <= 49   && lon >= 9     && lon <= 18  ) return '奧地利';
+            if (lat >= 37   && lat <= 47   && lon >= 6     && lon <= 19  ) return '義大利';
+            if (lat >= 44   && lat <= 47   && lon >= 14    && lon <= 23  ) return '克羅埃西亞';
+            if (lat >= 43   && lat <= 47   && lon >= 19    && lon <= 24  ) return '塞爾維亞';
+            if (lat >= 45   && lat <= 52   && lon >= 22    && lon <= 40  ) return '烏克蘭';
+            if (lat >= 40   && lat <= 45   && lon >= 23    && lon <= 28  ) return '保加利亞';
+            if (lat >= 1    && lat <= 5    && lon >= 103   && lon <= 105 ) return '新加坡';
+            if (lat >= -12  && lat <= 5    && lon >= 95    && lon <= 141 ) return '印尼';
+            if (lat >= 28   && lat <= 38   && lon >= 68    && lon <= 98  ) return '印度';
+            if (lat >= 3    && lat <= 8    && lon >= 99    && lon <= 120 ) return '馬來西亞';
+            if (lat >= 12   && lat <= 24   && lon >= 92    && lon <= 101 ) return '緬甸';
+            if (lat >= 22   && lat <= 42   && lon >= 73    && lon <= 135 ) return '中國';
+            if (lat >= -60  && lat <= -50  && lon >= -75   && lon <= -55 ) return '智利';
+            if (lat >= -55  && lat <= -22  && lon >= -73   && lon <= -53 ) return '阿根廷';
+            if (lat >= -4   && lat <= 13   && lon >= -17   && lon <= 5   ) return '西非';
+            if (lat >= -35  && lat <= 5    && lon >= 10    && lon <= 45  ) return '非洲';
+            return null;
+        }
+
+        function getRouteName(lats, lons, idx) {
+            const n = lats.length;
+            let sumLat = 0, sumLon = 0;
+            for (let k = 0; k < n; k++) { sumLat += lats[k]; sumLon += lons[k]; }
+            const cLat = sumLat / n, cLon = sumLon / n;
+
+            // 若名稱數量與路線數量完全一致，則按順序直接對應
+            if (allDbNames.length === routes.length) return allDbNames[idx];
+
+            // 地理關鍵字匹配
+            const kw = geoKeyword(cLat, cLon);
+            if (kw) {
+                const matches = allDbNames.filter(nm => nm.includes(kw));
+                if (matches.length === 1) return matches[0];
+                if (matches.length > 1) return `${kw}地區路線（${matches.length} 條符合）`;
             }
 
-            // 1. Base Strategy
+            // 回退：顯示座標
+            return `路線 ${idx + 1}（${cLat.toFixed(2)}°N, ${cLon.toFixed(2)}°E）`;
+        }
+
+        const totalRoutes = routes.length;
+        logDb(`<br>開始優化 <b style="color:#f8fafc">${totalRoutes}</b> 條路線`
+            + ` [${dbStratSelect.options[dbStratSelect.selectedIndex].text}`
+            + ` + ${dbOptSelect.options[dbOptSelect.selectedIndex].text}]...`);
+
+        // 進度條輔助函式
+        function setProgress(done, label, routeName) {
+            const pct = Math.round((done / totalRoutes) * 100);
+            dbProgressBar.style.width  = pct + '%';
+            dbProgressPct.textContent  = pct + '%';
+            dbProgressLabel.textContent = label;
+            dbProgressRoute.textContent = routeName || '';
+        }
+
+        // ====== 4. 逐條路線優化 ======
+        // 每隔 YIELD_EVERY 條讓出主執行緒，避免網頁無回應
+        const YIELD_EVERY = 5;
+        const tStart = Date.now();
+
+        for (let r = 0; r < totalRoutes; r++) {
+            const { start, end, len } = routes[r];
+
+            // 取出本路線的 lat/lon 切片
+            const lats = allLats.slice(start, end);
+            const lons = allLons.slice(start, end);
+            const routeLabel = getRouteName(lats, lons, r);
+
+            // 更新進度條（每條都更新，只讓出部分）
+            const elapsed = ((Date.now() - tStart) / 1000).toFixed(1);
+            setProgress(r, `路線 ${r + 1} / ${totalRoutes}  ·  已用 ${elapsed}s`, routeLabel);
+
+            // 暫時替換全域 points 以使用演算法函式
+            const oldPoints = [...points];
+            points = [];
+            for (let j = 0; j < len; j++) {
+                points.push({ lat: lats[j], lon: lons[j] });
+            }
+
+            // 1. 基礎策略
             let tour;
             if (stratId === 'nn') tour = runNearestNeighbor();
             else if (stratId === 'greedy') tour = runGreedy();
             else if (stratId === 'insertion') tour = runInsertion();
             else tour = points.map((_, i) => i);
 
-            // 2. Optimization
+            // 2. 優化疊加
             if (optId === '2opt') tour = run2Opt(tour);
             else if (optId === 'lk') tour = runLinKernighan(tour);
             else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
             else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
 
-            // 3. Write back new order
-            let newLats = new Float64Array(route.len);
-            let newLons = new Float64Array(route.len);
-
-            for (let j = 0; j < route.len; j++) {
-                newLats[j] = route.lats[tour[j]];
-                newLons[j] = route.lons[tour[j]];
+            // 3. 寫回新順序到 workBuf（leaf node 對應 byte 位置）
+            const newLats = new Float64Array(len);
+            const newLons = new Float64Array(len);
+            for (let j = 0; j < len; j++) {
+                newLats[j] = lats[tour[j]];
+                newLons[j] = lons[tour[j]];
+            }
+            for (let j = 0; j < len; j++) {
+                const gi = start + j;
+                const leafIdx   = Math.floor(gi / 1000);
+                const posInLeaf = gi % 1000;
+                view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, newLats[j], true);
+                view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, newLons[j], true);
             }
 
-            for (let j = 0; j < route.len; j++) {
-                // We overwrite the actual Float64Array which writes to the ArrayBuffer
-                floatArray[route.latStartIdx + j] = newLats[j];
-                floatArray[route.lonStartIdx + j] = newLons[j];
+            points = oldPoints;
+
+            logDb(`- [${routeLabel}]：${len} pts <span style="color:#34d399">✓</span>`);
+
+            // 每 YIELD_EVERY 條讓出主執行緒（保持 UI 回應）
+            if ((r + 1) % YIELD_EVERY === 0) {
+                await new Promise(res => setTimeout(res, 0));
             }
-
-            points = oldPoints; // restore original global points
-
-            logDb(`- 路線 ${r + 1}: 成功優化 ${route.len} 個座標... <span style="color:#34d399">完成!</span>`);
-            // Yield frame to update UI
-            await new Promise(res => setTimeout(res, 10));
         }
 
-        logDb(`所有路線已最佳化。準備下載檔案...`);
+        // 完成進度條
+        const totalSec = ((Date.now() - tStart) / 1000).toFixed(1);
+        setProgress(totalRoutes, `完成！共 ${totalRoutes} 條  ·  耗時 ${totalSec}s`, '');
 
-        const blob = new Blob([buffer], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const baseName = file.name.replace('.db', '');
-        const suffix = `${stratId}_${optId}`;
-        a.download = `${baseName}_${suffix}.db`;
+        logDb(`<br><span style="color:#34d399; font-weight:bold;">✅ 全部 ${totalRoutes} 條路線優化完成（${totalSec}s）</span>`);
+        logDb(`準備下載...`);
+        await new Promise(res => setTimeout(res, 30));
+
+        // ====== 5. 下載修改後的 workBuf ======
+        const blob = new Blob([workBuf], { type: 'application/octet-stream' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        const baseName = file.name.replace(/\.db$/i, '');
+        a.download = `${baseName}_${methodSuffix}.db`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        logDb(`<span style="color:#fbbf24">檔案已下載: ${a.download}</span>`);
+        logDb(`<span style="color:#fbbf24">📥 已下載: ${a.download}</span>`);
+
+        // 恢復拖放區
+        dbDropArea.style.pointerEvents = '';
+        dbDropArea.style.opacity = '';
     }
 }
