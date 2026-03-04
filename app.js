@@ -1783,43 +1783,13 @@ if (dbDropArea) {
         }
 
         // ====== 4. 逐條路線優化 ======
-        // 每隔 YIELD_EVERY 條讓出主執行緒，避免網頁無回應
-        const YIELD_EVERY = 5;
         const tStart = Date.now();
 
-        for (let r = 0; r < totalRoutes; r++) {
+        // 寫回輔助函式（Worker 與 fallback 共用）
+        function applyTour(r, tour) {
             const { start, end, len } = routes[r];
-
-            // 取出本路線的 lat/lon 切片
             const lats = allLats.slice(start, end);
             const lons = allLons.slice(start, end);
-            const routeLabel = getRouteName(lats, lons, r);
-
-            // 更新進度條（每條都更新，只讓出部分）
-            const elapsed = ((Date.now() - tStart) / 1000).toFixed(1);
-            setProgress(r, `路線 ${r + 1} / ${totalRoutes}  ·  已用 ${elapsed}s`, routeLabel);
-
-            // 暫時替換全域 points 以使用演算法函式
-            const oldPoints = [...points];
-            points = [];
-            for (let j = 0; j < len; j++) {
-                points.push({ lat: lats[j], lon: lons[j] });
-            }
-
-            // 1. 基礎策略
-            let tour;
-            if (stratId === 'nn') tour = runNearestNeighbor();
-            else if (stratId === 'greedy') tour = runGreedy();
-            else if (stratId === 'insertion') tour = runInsertion();
-            else tour = points.map((_, i) => i);
-
-            // 2. 優化疊加
-            if (optId === '2opt') tour = run2Opt(tour);
-            else if (optId === 'lk') tour = runLinKernighan(tour);
-            else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
-            else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
-
-            // 3. 寫回新順序到 workBuf（leaf node 對應 byte 位置）
             const newLats = new Float64Array(len);
             const newLons = new Float64Array(len);
             for (let j = 0; j < len; j++) {
@@ -1833,14 +1803,61 @@ if (dbDropArea) {
                 view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, newLats[j], true);
                 view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, newLons[j], true);
             }
-
-            points = oldPoints;
-
+            const routeLabel = getRouteName(lats, lons, r);
+            const elapsed = ((Date.now() - tStart) / 1000).toFixed(1);
+            setProgress(r + 1, `路線 ${r + 1} / ${totalRoutes}  ·  已用 ${elapsed}s`, routeLabel);
             logDb(`- [${routeLabel}]：${len} pts <span style="color:#34d399">✓</span>`);
+        }
 
-            // 每 YIELD_EVERY 條讓出主執行緒（保持 UI 回應）
-            if ((r + 1) % YIELD_EVERY === 0) {
-                await new Promise(res => setTimeout(res, 0));
+        // 嘗試用 Web Worker（不阻塞主執行緒，log 即時顯示）
+        try {
+            // 準備路線資料傳給 Worker
+            const routeData = routes.map(({ start, end, len }) => {
+                const pts = [];
+                for (let j = 0; j < len; j++) {
+                    pts.push({ lat: allLats[start + j], lon: allLons[start + j] });
+                }
+                return pts;
+            });
+
+            await new Promise((resolve, reject) => {
+                const dbWorker = new Worker('worker.js');
+                dbWorker.onmessage = (e) => {
+                    if (e.data.type === 'db-route-done') {
+                        applyTour(e.data.idx, e.data.tour);
+                    } else if (e.data.type === 'progress') {
+                        dbProgressLabel.textContent = e.data.message;
+                    } else if (e.data.type === 'db-batch-done') {
+                        dbWorker.terminate();
+                        resolve();
+                    }
+                };
+                dbWorker.onerror = (err) => { dbWorker.terminate(); reject(err); };
+                dbWorker.postMessage({ type: 'db-batch', routes: routeData, stratId, optId });
+            });
+
+        } catch (_) {
+            // Fallback：同步處理（file:// 協議或舊瀏覽器）
+            logDb(`<span style="color:#fbbf24">⚠ Web Worker 不可用，改用同步處理...</span>`);
+            for (let r = 0; r < totalRoutes; r++) {
+                const { start, end, len } = routes[r];
+                const lats = allLats.slice(start, end);
+                const lons = allLons.slice(start, end);
+                const oldPoints = [...points];
+                points = [];
+                for (let j = 0; j < len; j++) points.push({ lat: lats[j], lon: lons[j] });
+                let tour;
+                if (stratId === 'nn') tour = runNearestNeighbor();
+                else if (stratId === 'greedy') tour = runGreedy();
+                else if (stratId === 'insertion') tour = runInsertion();
+                else tour = points.map((_, i) => i);
+                if (optId === '2opt') tour = run2Opt(tour);
+                else if (optId === 'lk') tour = runLinKernighan(tour);
+                else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
+                else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
+                points = oldPoints;
+                applyTour(r, tour);
+                if ((r + 1) % 5 === 0) await new Promise(res => setTimeout(res, 0));
             }
         }
 

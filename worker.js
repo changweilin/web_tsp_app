@@ -366,7 +366,34 @@ function runGeneticAlgorithm(baseTour) {
     return bestOverallTour;
 }
 
+// ====== DB Batch Mode ======
+function handleDbBatch({ routes, stratId, optId }) {
+    const total = routes.length;
+    for (let r = 0; r < total; r++) {
+        points = routes[r]; // array of {lat, lon}
+
+        let tour;
+        if (stratId === 'nn') tour = runNearestNeighbor();
+        else if (stratId === 'greedy') tour = runGreedy();
+        else if (stratId === 'insertion') tour = runInsertion();
+        else tour = points.map((_, i) => i);
+
+        if (optId === '2opt') tour = run2Opt(tour);
+        else if (optId === 'lk') tour = runLinKernighan(tour);
+        else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
+        else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
+
+        self.postMessage({ type: 'db-route-done', idx: r, tour });
+    }
+    self.postMessage({ type: 'db-batch-done' });
+}
+
 self.addEventListener('message', function (e) {
+    if (e.data.type === 'db-batch') {
+        handleDbBatch(e.data);
+        return;
+    }
+
     points = e.data.points;
     const config = e.data.config;
 
