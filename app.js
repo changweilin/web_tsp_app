@@ -1895,3 +1895,10 @@ if (dbDropArea) {
         dbDropArea.style.opacity = '';
     }
 }
+
+function toggleDetail(header) {
+    const panel = header.parentElement.querySelector('.detail-panel');
+    if (!panel) return;
+    header.classList.toggle('open');
+    panel.classList.toggle('open');
+}

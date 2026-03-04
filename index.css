@@ -461,6 +461,115 @@ footer.controls {
     background-color: var(--primary);
 }
 
+/* Tutorial Card Detail Panels */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0;
+}
+.card-header:hover { color: #93c5fd; }
+.toggle-icon {
+    font-size: 0.75rem;
+    color: #60a5fa;
+    transition: transform 0.3s ease;
+    flex-shrink: 0;
+}
+.card-header.open .toggle-icon { transform: rotate(90deg); }
+.detail-panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.45s ease;
+}
+.detail-panel.open { max-height: 1600px; }
+.detail-inner {
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.detail-section { display: flex; flex-direction: column; gap: 7px; }
+.detail-heading {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #60a5fa;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(96,165,250,0.25);
+}
+.detail-steps {
+    color: #cbd5e1;
+    font-size: 0.87rem;
+    line-height: 1.65;
+    padding-left: 18px;
+    margin: 0;
+}
+.detail-steps li { margin-bottom: 3px; }
+.detail-steps ul { padding-left: 16px; margin-top: 3px; }
+.formula-box {
+    background: rgba(0,0,0,0.35);
+    border-left: 3px solid #3b82f6;
+    border-radius: 0 6px 6px 0;
+    padding: 7px 11px;
+}
+.formula-title {
+    font-size: 0.74rem;
+    color: #7dd3fc;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.formula-box code {
+    display: block;
+    font-family: 'Courier New', monospace;
+    font-size: 0.81rem;
+    color: #e2e8f0;
+    line-height: 1.75;
+    background: none;
+    padding: 0;
+}
+.param-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+}
+.param-table td {
+    padding: 4px 8px;
+    vertical-align: top;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    color: #cbd5e1;
+}
+.param-table td:first-child {
+    font-family: 'Courier New', monospace;
+    color: #fbbf24;
+    white-space: nowrap;
+    width: 1%;
+    padding-right: 14px;
+}
+.complexity-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.complexity-label { font-size: 0.8rem; color: #94a3b8; }
+.complexity-value {
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    color: #34d399;
+    background: rgba(52,211,153,0.12);
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+.detail-note {
+    font-size: 0.82rem;
+    color: #94a3b8;
+    line-height: 1.5;
+    margin: 2px 0 0;
+}
+
 /* Tutorial Animations */
 .tutorial-card {
     background: rgba(15, 23, 42, 0.5);
