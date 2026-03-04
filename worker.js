@@ -1,6 +1,7 @@
 let points = [];
 let currentStepGlobal = 0;
 let totalStepsGlobal = 1;
+let routeDeadline = Infinity;
 
 function reportProgress(msg, subProgress = 0) {
     const safeSub = Math.max(0, Math.min(1, subProgress));
@@ -152,6 +153,7 @@ function run2Opt(initialTour) {
     let maxIterations = points.length * 100;
 
     while (improved && iterations < maxIterations) {
+        if (Date.now() > routeDeadline) break;
         improved = false;
         iterations++;
 
@@ -193,6 +195,7 @@ function runLinKernighan(baseTour) {
     const maxIterations = 50;
 
     for (let i = 0; i < maxIterations; i++) {
+        if (Date.now() > routeDeadline) break;
         if (i % 5 === 0) reportProgress("正在更深入優化 (L-K)...", i / maxIterations);
         if (n >= 8) {
             let p1 = 1 + Math.floor(Math.random() * (n / 4));
@@ -244,6 +247,7 @@ function runSimulatedAnnealing(baseTour) {
     let iter = 0;
 
     while (temp > minTemp) {
+        if (Date.now() > routeDeadline) break;
         if (iter % 50 === 0) reportProgress("正在運用模擬退火優化 (SA)...", iter / totalExpectedIter);
         for (let i = 0; i < iterationsPerTemp; i++) {
             // Pick two random edges to 2-opt swap
@@ -307,6 +311,7 @@ function runGeneticAlgorithm(baseTour) {
     let bestOverallLen = tourLength(baseTour, true);
 
     for (let gen = 0; gen < generations; gen++) {
+        if (Date.now() > routeDeadline) break;
         if (gen % 10 === 0) reportProgress("正在運用基因演算法優化 (GA)...", gen / generations);
         // Evaluate
         let scored = population.map(t => ({ tour: t, len: tourLength(t, true) }));
@@ -367,23 +372,33 @@ function runGeneticAlgorithm(baseTour) {
 }
 
 // ====== DB Batch Mode ======
-function handleDbBatch({ routes, stratId, optId }) {
+function handleDbBatch({ routes, stratId, optId, routeTimeoutMs }) {
     const total = routes.length;
     for (let r = 0; r < total; r++) {
         points = routes[r]; // array of {lat, lon}
+
+        // Set per-route deadline
+        routeDeadline = routeTimeoutMs > 0 ? Date.now() + routeTimeoutMs : Infinity;
+
+        // Original tour = current DB order
+        const origTour = points.map((_, i) => i);
+        const origLen  = tourLength(origTour, true);
 
         let tour;
         if (stratId === 'nn') tour = runNearestNeighbor();
         else if (stratId === 'greedy') tour = runGreedy();
         else if (stratId === 'insertion') tour = runInsertion();
-        else tour = points.map((_, i) => i);
+        else tour = [...origTour];
 
         if (optId === '2opt') tour = run2Opt(tour);
         else if (optId === 'lk') tour = runLinKernighan(tour);
         else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
         else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
 
-        self.postMessage({ type: 'db-route-done', idx: r, tour });
+        routeDeadline = Infinity; // reset
+        const newLen = tourLength(tour, true);
+
+        self.postMessage({ type: 'db-route-done', idx: r, tour, origLen, newLen });
     }
     self.postMessage({ type: 'db-batch-done' });
 }

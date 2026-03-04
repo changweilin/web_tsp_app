@@ -1512,7 +1512,11 @@ const dbProgressWrap = document.getElementById('dbProgressWrap');
 const dbProgressBar  = document.getElementById('dbProgressBar');
 const dbProgressLabel = document.getElementById('dbProgressLabel');
 const dbProgressPct  = document.getElementById('dbProgressPct');
-const dbProgressRoute = document.getElementById('dbProgressRoute');
+const dbProgressRoute  = document.getElementById('dbProgressRoute');
+const dbSkipLarge      = document.getElementById('dbSkipLarge');
+const dbTimeoutSelect  = document.getElementById('dbTimeoutSelect');
+const dbThresholdSlider= document.getElementById('dbThresholdSlider');
+const dbThresholdVal   = document.getElementById('dbThresholdVal');
 
 if (dbDropArea) {
     function logDb(msg) {
@@ -1532,6 +1536,10 @@ if (dbDropArea) {
         if (e.target.files.length) processDbFile(e.target.files[0]);
     });
 
+    dbThresholdSlider.addEventListener('input', () => {
+        dbThresholdVal.textContent = dbThresholdSlider.value;
+    });
+
     async function processDbFile(file) {
         if (!file.name.endsWith('.db')) {
             logDb(`<span style="color:#ef4444">錯誤: 請上傳 .db 檔案</span>`);
@@ -1540,6 +1548,10 @@ if (dbDropArea) {
 
         const stratId = dbStratSelect.value;
         const optId   = dbOptSelect.value;
+
+        const skipLarge       = dbSkipLarge.checked;
+        const routeTimeoutMs  = parseInt(dbTimeoutSelect.value, 10);
+        const improvThreshold = parseInt(dbThresholdSlider.value, 10) / 100;
 
         // 人類可讀的 TSP 方法名稱（用於檔名後綴）
         const stratLabel = { nn: 'nn', greedy: 'greedy', insertion: 'ins' }[stratId] || stratId;
@@ -1720,7 +1732,7 @@ if (dbDropArea) {
         // ====== 3. 摘要 ======
         logDb(`<span style="color:#94a3b8">共 ${routes.length} 條路線，總座標點：${routes.reduce((s,r)=>s+r.len,0)}</span>`);
 
-        const totalRoutes = routes.length;
+        let totalRoutes = routes.length;
         logDb(`<br>開始優化 <b style="color:#f8fafc">${totalRoutes}</b> 條路線`
             + ` [${dbStratSelect.options[dbStratSelect.selectedIndex].text}`
             + ` + ${dbOptSelect.options[dbOptSelect.selectedIndex].text}]...`);
@@ -1745,56 +1757,76 @@ if (dbDropArea) {
         }
 
         // 寫回輔助函式（Worker 與 fallback 共用）
-        function applyTour(r, tour) {
+        function applyTour(r, tour, doneCount, origLen, newLen) {
             const { name, idxArr, len } = routes[r];
-            const lats = new Float64Array(len);
-            const lons = new Float64Array(len);
-            for (let j = 0; j < len; j++) {
-                lats[j] = allLats[idxArr[j]];
-                lons[j] = allLons[idxArr[j]];
+            const improvement = origLen > 0 ? Math.max(0, (origLen - newLen) / origLen) : 0;
+            const improvPct = (improvement * 100).toFixed(1);
+
+            if (improvement >= improvThreshold) {
+                const lats = new Float64Array(len);
+                const lons = new Float64Array(len);
+                for (let j = 0; j < len; j++) {
+                    lats[j] = allLats[idxArr[j]];
+                    lons[j] = allLons[idxArr[j]];
+                }
+                const newLats = new Float64Array(len);
+                const newLons = new Float64Array(len);
+                for (let j = 0; j < len; j++) {
+                    newLats[j] = lats[tour[j]];
+                    newLons[j] = lons[tour[j]];
+                }
+                for (let j = 0; j < len; j++) {
+                    const gi = idxArr[j];
+                    const leafIdx   = Math.floor(gi / 1000);
+                    const posInLeaf = gi % 1000;
+                    view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, newLats[j], true);
+                    view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, newLons[j], true);
+                }
+                logDb(`- [${name}]：${len} 點，改善 ${improvPct}% <span style="color:#34d399">✓</span>`);
+            } else {
+                const threshPct = (improvThreshold * 100).toFixed(0);
+                logDb(`- [${name}]：${len} 點，改善 ${improvPct}% &lt; ${threshPct}%，<span style="color:#f59e0b">略過</span>`);
             }
-            const newLats = new Float64Array(len);
-            const newLons = new Float64Array(len);
-            for (let j = 0; j < len; j++) {
-                newLats[j] = lats[tour[j]];
-                newLons[j] = lons[tour[j]];
-            }
-            for (let j = 0; j < len; j++) {
-                const gi = idxArr[j];
-                const leafIdx   = Math.floor(gi / 1000);
-                const posInLeaf = gi % 1000;
-                view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, newLats[j], true);
-                view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, newLons[j], true);
-            }
-            const routeLabel = name;
+
             const elapsedSec = (Date.now() - tStart) / 1000;
-            const done = r + 1;
-            const remaining = totalRoutes - done;
-            const eta = remaining > 0 ? (elapsedSec / done) * remaining : 0;
+            const remaining = totalRoutes - doneCount;
+            const eta = remaining > 0 && doneCount > 0 ? (elapsedSec / doneCount) * remaining : 0;
             const etaStr = remaining > 0 ? `剩約 ${fmtTime(eta)}` : '即將完成';
-            setProgress(done,
-                `路線 ${done} / ${totalRoutes}  ·  已用 ${fmtTime(elapsedSec)}  ·  ${etaStr}`,
-                `${routeLabel}（${len} 點）`
+            setProgress(doneCount,
+                `路線 ${doneCount} / ${totalRoutes}  ·  已用 ${fmtTime(elapsedSec)}  ·  ${etaStr}`,
+                `${name}（${len} 點）`
             );
-            logDb(`- [${routeLabel}]：${len} 點 <span style="color:#34d399">✓</span>`);
         }
+
+        // Build active route index list (skip large if option enabled)
+        const activeRouteIndices = [];
+        for (let i = 0; i < routes.length; i++) {
+            if (skipLarge && routes[i].len > 256) {
+                logDb(`- [${routes[i].name}]：${routes[i].len} 點 <span style="color:#f59e0b">略過（超過 256 點）</span>`);
+            } else {
+                activeRouteIndices.push(i);
+            }
+        }
+        totalRoutes = activeRouteIndices.length;
+
+        const routeData = activeRouteIndices.map(i => {
+            const { idxArr, len } = routes[i];
+            const pts = [];
+            for (let j = 0; j < len; j++) {
+                pts.push({ lat: allLats[idxArr[j]], lon: allLons[idxArr[j]] });
+            }
+            return pts;
+        });
 
         // 嘗試用 Web Worker（不阻塞主執行緒，log 即時顯示）
         try {
-            // 準備路線資料傳給 Worker
-            const routeData = routes.map(({ idxArr, len }) => {
-                const pts = [];
-                for (let j = 0; j < len; j++) {
-                    pts.push({ lat: allLats[idxArr[j]], lon: allLons[idxArr[j]] });
-                }
-                return pts;
-            });
-
+            let doneCount = 0;
             await new Promise((resolve, reject) => {
                 const dbWorker = new Worker('worker.js');
                 dbWorker.onmessage = (e) => {
                     if (e.data.type === 'db-route-done') {
-                        applyTour(e.data.idx, e.data.tour);
+                        const origIdx = activeRouteIndices[e.data.idx];
+                        applyTour(origIdx, e.data.tour, ++doneCount, e.data.origLen, e.data.newLen);
                     } else if (e.data.type === 'progress') {
                         dbProgressLabel.textContent = e.data.message;
                     } else if (e.data.type === 'db-batch-done') {
@@ -1803,29 +1835,34 @@ if (dbDropArea) {
                     }
                 };
                 dbWorker.onerror = (err) => { dbWorker.terminate(); reject(err); };
-                dbWorker.postMessage({ type: 'db-batch', routes: routeData, stratId, optId });
+                dbWorker.postMessage({ type: 'db-batch', routes: routeData, stratId, optId, routeTimeoutMs });
             });
 
         } catch (_) {
             // Fallback：同步處理（file:// 協議或舊瀏覽器）
             logDb(`<span style="color:#fbbf24">⚠ Web Worker 不可用，改用同步處理...</span>`);
-            for (let r = 0; r < totalRoutes; r++) {
+            let fbDoneCount = 0;
+            for (let ri = 0; ri < activeRouteIndices.length; ri++) {
+                const r = activeRouteIndices[ri];
                 const { idxArr, len } = routes[r];
                 const oldPoints = [...points];
                 points = [];
                 for (let j = 0; j < len; j++) points.push({ lat: allLats[idxArr[j]], lon: allLons[idxArr[j]] });
+                const origTour = points.map((_, i) => i);
+                const origLen = tourLength(origTour);
                 let tour;
                 if (stratId === 'nn') tour = runNearestNeighbor();
                 else if (stratId === 'greedy') tour = runGreedy();
                 else if (stratId === 'insertion') tour = runInsertion();
-                else tour = points.map((_, i) => i);
+                else tour = [...origTour];
                 if (optId === '2opt') tour = run2Opt(tour);
                 else if (optId === 'lk') tour = runLinKernighan(tour);
                 else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
                 else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
+                const newLen = tourLength(tour);
                 points = oldPoints;
-                applyTour(r, tour);
-                if ((r + 1) % 5 === 0) await new Promise(res => setTimeout(res, 0));
+                applyTour(r, tour, ++fbDoneCount, origLen, newLen);
+                if (fbDoneCount % 5 === 0) await new Promise(res => setTimeout(res, 0));
             }
         }
 

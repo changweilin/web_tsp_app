@@ -372,6 +372,33 @@
                                     <option value="ga">基因優化</option>
                                 </select>
                             </div>
+
+                            <!-- Option 1: Skip large routes -->
+                            <div>
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" id="dbSkipLarge">
+                                    略過超過 256 點的路線
+                                </label>
+                            </div>
+
+                            <!-- Option 2: Per-route timeout -->
+                            <div>
+                                <label style="display:block;font-size:0.85rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">單一路線逾時上限</label>
+                                <select id="dbTimeoutSelect" class="btn secondary"
+                                    style="width:100%;text-align:left;background:rgba(15,23,42,0.8);">
+                                    <option value="60000">1 分鐘</option>
+                                    <option value="180000" selected>3 分鐘</option>
+                                    <option value="600000">10 分鐘</option>
+                                    <option value="0">不限時</option>
+                                </select>
+                            </div>
+
+                            <!-- Option 3: Improvement threshold -->
+                            <div>
+                                <label style="display:block;font-size:0.85rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">最低改善門檻：<span id="dbThresholdVal">0</span>%</label>
+                                <input type="range" id="dbThresholdSlider" min="0" max="50" value="0" step="1"
+                                    style="width:100%">
+                            </div>
                         </div>
                     </div>
 
