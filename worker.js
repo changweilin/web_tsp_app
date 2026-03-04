@@ -158,6 +158,7 @@ function run2Opt(initialTour) {
         iterations++;
 
         for (let i = 1; i < bestTour.length - 1; i++) {
+            if (Date.now() > routeDeadline) { improved = false; break; }
             for (let j = i + 1; j < bestTour.length; j++) {
                 if (j - i === 1) continue;
 
@@ -314,7 +315,12 @@ function runGeneticAlgorithm(baseTour) {
         if (Date.now() > routeDeadline) break;
         if (gen % 10 === 0) reportProgress("正在運用基因演算法優化 (GA)...", gen / generations);
         // Evaluate
-        let scored = population.map(t => ({ tour: t, len: tourLength(t, true) }));
+        let scored = [];
+        for (let pi = 0; pi < population.length; pi++) {
+            if (Date.now() > routeDeadline) break;
+            scored.push({ tour: population[pi], len: tourLength(population[pi], true) });
+        }
+        if (scored.length < 2) break; // not enough evaluated to continue
         scored.sort((a, b) => a.len - b.len);
 
         if (scored[0].len < bestOverallLen) {
@@ -385,18 +391,23 @@ function handleDbBatch({ routes, stratId, optId, routeTimeoutMs }) {
         const origLen  = tourLength(origTour, true);
 
         let tour;
-        if (stratId === 'nn') tour = runNearestNeighbor();
-        else if (stratId === 'greedy') tour = runGreedy();
-        else if (stratId === 'insertion') tour = runInsertion();
-        else tour = [...origTour];
+        try {
+            if (stratId === 'nn') tour = runNearestNeighbor();
+            else if (stratId === 'greedy') tour = runGreedy();
+            else if (stratId === 'insertion') tour = runInsertion();
+            else tour = [...origTour];
 
-        if (optId === '2opt') tour = run2Opt(tour);
-        else if (optId === 'lk') tour = runLinKernighan(tour);
-        else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
-        else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
+            if (optId === '2opt') tour = run2Opt(tour);
+            else if (optId === 'lk') tour = runLinKernighan(tour);
+            else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
+            else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
+        } catch(e) {
+            tour = origTour.slice(); // fall back to original order
+        }
 
         routeDeadline = Infinity; // reset
-        const newLen = tourLength(tour, true);
+        let newLen;
+        try { newLen = tourLength(tour, true); } catch(e) { newLen = origLen; tour = origTour.slice(); }
 
         self.postMessage({ type: 'db-route-done', idx: r, tour, origLen, newLen });
     }
