@@ -1518,8 +1518,16 @@ const dbSkipLargeThreshold  = document.getElementById('dbSkipLargeThreshold');
 const dbTimeoutSelect  = document.getElementById('dbTimeoutSelect');
 const dbThresholdSlider= document.getElementById('dbThresholdSlider');
 const dbThresholdVal   = document.getElementById('dbThresholdVal');
+const dbAbortBtn       = document.getElementById('dbAbortBtn');
 
 if (dbDropArea) {
+    let dbCurrentWorker = null;
+    let dbAbortFn = null;
+
+    dbAbortBtn.addEventListener('click', () => {
+        if (dbAbortFn) dbAbortFn();
+    });
+
     function logDb(msg) {
         dbLogArea.innerHTML += `<div>${msg}</div>`;
         dbLogArea.scrollTop = dbLogArea.scrollHeight;
@@ -1573,6 +1581,8 @@ if (dbDropArea) {
         dbProgressPct.textContent = '0%';
         dbProgressLabel.textContent = '讀取檔案...';
         dbProgressRoute.textContent = '';
+        dbAbortBtn.style.display = 'inline-block';
+        let wasAborted = false;
 
         const buffer  = await file.arrayBuffer();
         // ★ 立即複製一份作為寫入目標，保留原始 buffer 不動
@@ -1821,10 +1831,17 @@ if (dbDropArea) {
         });
 
         // 嘗試用 Web Worker（不阻塞主執行緒，log 即時顯示）
+        let doneCount = 0;
         try {
-            let doneCount = 0;
             await new Promise((resolve, reject) => {
                 const dbWorker = new Worker('worker.js');
+                dbCurrentWorker = dbWorker;
+                dbAbortFn = () => {
+                    wasAborted = true;
+                    dbWorker.terminate();
+                    dbCurrentWorker = null;
+                    resolve();
+                };
                 dbWorker.onmessage = (e) => {
                     if (e.data.type === 'db-route-done') {
                         const origIdx = activeRouteIndices[e.data.idx];
@@ -1832,6 +1849,8 @@ if (dbDropArea) {
                     } else if (e.data.type === 'progress') {
                         dbProgressLabel.textContent = e.data.message;
                     } else if (e.data.type === 'db-batch-done') {
+                        dbCurrentWorker = null;
+                        dbAbortFn = null;
                         dbWorker.terminate();
                         resolve();
                     }
@@ -1843,8 +1862,10 @@ if (dbDropArea) {
         } catch (_) {
             // Fallback：同步處理（file:// 協議或舊瀏覽器）
             logDb(`<span style="color:#fbbf24">⚠ Web Worker 不可用，改用同步處理...</span>`);
-            let fbDoneCount = 0;
+            let fbAborted = false;
+            dbAbortFn = () => { wasAborted = true; fbAborted = true; };
             for (let ri = 0; ri < activeRouteIndices.length; ri++) {
+                if (fbAborted) break;
                 const r = activeRouteIndices[ri];
                 const { idxArr, len } = routes[r];
                 const oldPoints = [...points];
@@ -1863,16 +1884,25 @@ if (dbDropArea) {
                 else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
                 const newLen = tourLength(tour);
                 points = oldPoints;
-                applyTour(r, tour, ++fbDoneCount, origLen, newLen);
-                if (fbDoneCount % 5 === 0) await new Promise(res => setTimeout(res, 0));
+                applyTour(r, tour, ++doneCount, origLen, newLen);
+                if (doneCount % 5 === 0) await new Promise(res => setTimeout(res, 0));
             }
         }
 
+        // 清除中止狀態
+        dbAbortFn = null;
+        dbCurrentWorker = null;
+        dbAbortBtn.style.display = 'none';
+
         // 完成進度條
         const totalSec = ((Date.now() - tStart) / 1000).toFixed(1);
-        setProgress(totalRoutes, `完成！共 ${totalRoutes} 條  ·  耗時 ${totalSec}s`, '');
-
-        logDb(`<br><span style="color:#34d399; font-weight:bold;">✅ 全部 ${totalRoutes} 條路線優化完成（${totalSec}s）</span>`);
+        if (wasAborted) {
+            setProgress(doneCount, `已中止  ·  完成 ${doneCount} / ${totalRoutes} 條  ·  耗時 ${totalSec}s`, '');
+            logDb(`<br><span style="color:#f87171; font-weight:bold;">⏹ 已中止（完成 ${doneCount} / ${totalRoutes} 條，${totalSec}s）</span>`);
+        } else {
+            setProgress(totalRoutes, `完成！共 ${totalRoutes} 條  ·  耗時 ${totalSec}s`, '');
+            logDb(`<br><span style="color:#34d399; font-weight:bold;">✅ 全部 ${totalRoutes} 條路線優化完成（${totalSec}s）</span>`);
+        }
         logDb(`準備下載...`);
         await new Promise(res => setTimeout(res, 30));
 
@@ -1887,8 +1917,41 @@ if (dbDropArea) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-
         logDb(`<span style="color:#fbbf24">📥 已下載: ${a.download}</span>`);
+
+        // ====== 6. 下載設定與 log 報告 (.txt) ======
+        const timeoutLabel = { '60000': '1 分鐘', '180000': '3 分鐘', '600000': '10 分鐘', '0': '不限時' }[dbTimeoutSelect.value] || dbTimeoutSelect.value;
+        const reportLines = [
+            `=== GPS Joystick DB 優化報告 ===`,
+            `檔案：${file.name}`,
+            `時間：${new Date().toLocaleString('zh-TW')}`,
+            ``,
+            `--- 設定 ---`,
+            `TSP 策略：${dbStratSelect.options[dbStratSelect.selectedIndex].text}`,
+            `後處理：${dbOptSelect.options[dbOptSelect.selectedIndex].text}`,
+            `略過大路線：${skipLarge ? `是（>${skipLargeThreshold} 點）` : '否'}`,
+            `單一路線逾時：${timeoutLabel}`,
+            `最低改善門檻：${(improvThreshold * 100).toFixed(0)}%`,
+            ``,
+            `--- 結果 ---`,
+            wasAborted
+                ? `狀態：已中止（${doneCount} / ${totalRoutes} 條完成）`
+                : `狀態：完成（${totalRoutes} 條）`,
+            `耗時：${totalSec}s`,
+            ``,
+            `--- 詳細 log ---`,
+            dbLogArea.innerText,
+        ];
+        const txtBlob = new Blob([reportLines.join('\n')], { type: 'text/plain;charset=utf-8' });
+        const txtUrl  = URL.createObjectURL(txtBlob);
+        const ta      = document.createElement('a');
+        ta.href       = txtUrl;
+        ta.download   = `${baseName}_${methodSuffix}_report.txt`;
+        document.body.appendChild(ta);
+        ta.click();
+        document.body.removeChild(ta);
+        URL.revokeObjectURL(txtUrl);
+        logDb(`<span style="color:#fbbf24">📄 已下載報告: ${ta.download}</span>`);
 
         // 恢復拖放區
         dbDropArea.style.pointerEvents = '';
