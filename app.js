@@ -1650,124 +1650,75 @@ if (dbDropArea) {
             }
         }
 
-        // 2e. 偵測路線邊界：lat 與 lon 同時跳躍 > 0.3°（約 30 km）
-        const JUMP_THRESH = 0.3;
-        const routeStarts = [0];
-        for (let i = 1; i < totalPts; i++) {
-            if (Math.abs(allLats[i] - allLats[i-1]) > JUMP_THRESH &&
-                Math.abs(allLons[i] - allLons[i-1]) > JUMP_THRESH) {
-                routeStarts.push(i);
+        // 2e. 用 AAAA+0x46 索引結構精確讀取路線邊界與名稱
+        //     0x46 節點是 576 個 uint32 偏移量 → 各指向一個 AAAA+0x05 節點
+        //     0x05 節點 header = AAAA 05 00 cnt_hi cnt_lo；data = cnt 個 uint16 座標索引
+        logDb(`<span style="color:#94a3b8">解析路線索引結構 (0x46)...</span>`);
+        await new Promise(res => setTimeout(res, 5));
+
+        // 找最後一個 cnt == allDbNames.length 的 AAAA+0x46 節點
+        let routeIdxOff46 = -1;
+        for (let i = 0; i + 7 < bytes.length; i += 8) {
+            if (bytes[i]===0x41 && bytes[i+1]===0x41 && bytes[i+2]===0x41 && bytes[i+3]===0x41 &&
+                bytes[i+4] === 0x46) {
+                const nc = (bytes[i+6] << 8) | bytes[i+7];
+                if (nc === allDbNames.length) routeIdxOff46 = i;
             }
         }
-        routeStarts.push(totalPts);
 
-        // 2f. 建立路線物件（過濾 < 10 點的雜訊片段）
         let routes = [];
-        for (let r = 0; r < routeStarts.length - 1; r++) {
-            const start = routeStarts[r], end = routeStarts[r + 1];
-            if (end - start >= 10) routes.push({ start, end, len: end - start });
+        if (routeIdxOff46 >= 0) {
+            // ── 精確解析：名稱與座標索引直接一對一 ──
+            for (let ri = 0; ri < allDbNames.length; ri++) {
+                const ptrOff = routeIdxOff46 + 8 + ri * 4;
+                if (ptrOff + 4 > bytes.length) continue;
+                const nodeOff = view.getUint32(ptrOff, true);
+                if (nodeOff + 8 > bytes.length || bytes[nodeOff] !== 0x41) continue;
+                const len = (bytes[nodeOff+6] << 8) | bytes[nodeOff+7];
+                if (len < 3) continue;
+                // 讀所有 uint16 索引，偵測 ring-buffer wrap-around
+                const idxArr = new Int32Array(len);
+                let prevI16 = -1, carry = 0;
+                for (let j = 0; j < len; j++) {
+                    const i16 = bytes[nodeOff+8+j*2] | (bytes[nodeOff+9+j*2] << 8);
+                    if (prevI16 >= 0 && i16 < prevI16) carry += 65536;
+                    idxArr[j] = i16 + carry;
+                    prevI16 = i16;
+                }
+                routes.push({ name: allDbNames[ri], idxArr, start: idxArr[0], len });
+            }
+            logDb(`<span style="color:#34d399; font-weight:bold;">✅ 精確索引解析：${routes.length} 條路線直接配對名稱</span>`);
+        } else {
+            // ── Fallback：跳躍偵測法（0.3°）──
+            logDb(`<span style="color:#fbbf24">⚠ 未找到 0x46 索引結構，改用地理跳躍偵測...</span>`);
+            const JUMP_THRESH = 0.3;
+            const routeStarts = [0];
+            for (let i = 1; i < totalPts; i++) {
+                if (Math.abs(allLats[i] - allLats[i-1]) > JUMP_THRESH &&
+                    Math.abs(allLons[i] - allLons[i-1]) > JUMP_THRESH) {
+                    routeStarts.push(i);
+                }
+            }
+            routeStarts.push(totalPts);
+            for (let r = 0; r < routeStarts.length - 1; r++) {
+                const start = routeStarts[r], end = routeStarts[r + 1];
+                if (end - start >= 10) {
+                    const idxArr = new Int32Array(end - start);
+                    for (let j = 0; j < end - start; j++) idxArr[j] = start + j;
+                    const name = allDbNames.length === routeStarts.length - 1 ? allDbNames[r]
+                        : `路線 ${r + 1}`;
+                    routes.push({ name, idxArr, start, len: end - start });
+                }
+            }
         }
 
         if (routes.length === 0) {
-            logDb(`<span style="color:#ef4444">找不到任何路線資料（需要長度 ≥ 10 的座標序列）。</span>`);
+            logDb(`<span style="color:#ef4444">找不到任何路線資料。</span>`);
             return;
         }
 
-        // ====== 3. 名稱與路徑一對一驗證 ======
-        logDb(`<br><span style="color:#c084fc; font-weight:bold;">📋 名稱與路徑一對一驗證</span>`);
-        logDb(`資料庫路線名稱數量：<b style="color:#f8fafc">${allDbNames.length}</b> 條`);
-        logDb(`具備座標資料路線數量：<b style="color:#f8fafc">${routes.length}</b> 條`);
-
-        // 檢查重複名稱
-        const nameCount = {};
-        allDbNames.forEach(n => nameCount[n] = (nameCount[n] || 0) + 1);
-        const duplicates = Object.entries(nameCount).filter(([, c]) => c > 1);
-
-        if (allDbNames.length === routes.length && duplicates.length === 0) {
-            logDb(`<span style="color:#34d399; font-weight:bold;">✅ 驗證通過：名稱與座標路線完全一對一配對！</span>`);
-        } else {
-            if (allDbNames.length !== routes.length) {
-                const diff = allDbNames.length - routes.length;
-                if (diff > 0) {
-                    logDb(`<span style="color:#fbbf24;">⚠ 名稱（${allDbNames.length}）多於座標路線（${routes.length}），差異 ${diff} 條</span>`);
-                    logDb(`&nbsp;&nbsp;└ ${diff} 條路線名稱尚無對應座標資料（可能為未下載的範本路線）`);
-                } else {
-                    logDb(`<span style="color:#ef4444;">⚠ 座標路線（${routes.length}）多於名稱（${allDbNames.length}），差異 ${Math.abs(diff)} 條</span>`);
-                    logDb(`&nbsp;&nbsp;└ ${Math.abs(diff)} 條座標路線缺少對應名稱`);
-                }
-            }
-            if (duplicates.length > 0) {
-                logDb(`<span style="color:#fbbf24;">⚠ 發現 ${duplicates.length} 個重複路線名稱：</span>`);
-                duplicates.slice(0, 5).forEach(([name, count]) =>
-                    logDb(`&nbsp;&nbsp;└ "${name}" 重複 ${count} 次`)
-                );
-                if (duplicates.length > 5) logDb(`&nbsp;&nbsp;└ ...（共 ${duplicates.length} 個）`);
-            }
-            logDb(`<span style="color:#60a5fa;">→ 將對 ${routes.length} 條含座標資料的路線進行優化</span>`);
-        }
-
-        // 地理關鍵字輔助辨識（用於日誌顯示名稱）
-        function geoKeyword(lat, lon) {
-            if (lat >= 21.5 && lat <= 25.5 && lon >= 119.5 && lon <= 122.5) return '台灣';
-            if (lat >= 26   && lat <= 46   && lon >= 127   && lon <= 146  ) return '日本';
-            if (lat >= 33   && lat <= 38.5 && lon >= 124.5 && lon <= 130  ) return '韓國';
-            if (lat >= 14   && lat <= 24   && lon >= 100   && lon <= 110  ) return '越南';
-            if (lat >= 5    && lat <= 21   && lon >= 97    && lon <= 105  ) return '泰國';
-            if (lat >= 35   && lat <= 44   && lon >= -10   && lon <= 5   ) return '西班牙';
-            if (lat >= 41   && lat <= 52   && lon >= -5    && lon <= 9   ) return '法國';
-            if (lat >= 47   && lat <= 56   && lon >= 5     && lon <= 15  ) return '德國';
-            if (lat >= 49   && lat <= 59   && lon >= -8    && lon <= 2   ) return '英國';
-            if (lat >= 24   && lat <= 49   && lon >= -125  && lon <= -66 ) return '美國';
-            if (lat >= -44  && lat <= -10  && lon >= 113   && lon <= 154 ) return '澳洲';
-            if (lat >= -52  && lat <= -22  && lon >= -73   && lon <= -35 ) return '巴西';
-            if (lat >= 36   && lat <= 42   && lon >= 26    && lon <= 45  ) return '土耳其';
-            if (lat >= 36   && lat <= 43   && lon >= 20    && lon <= 28  ) return '希臘';
-            if (lat >= 1    && lat <= 1.5  && lon >= 103   && lon <= 105 ) return '新加坡';
-            if (lat >= 51   && lat <= 54   && lon >= 3     && lon <= 8   ) return '荷蘭';
-            if (lat >= 49.5 && lat <= 51.5 && lon >= 2     && lon <= 6.5 ) return '比利時';
-            if (lat >= -47  && lat <= -34  && lon >= 166   && lon <= 178 ) return '紐西蘭';
-            if (lat >= 22   && lat <= 35   && lon >= 50    && lon <= 60  ) return '阿拉伯';
-            if (lat >= 50   && lat <= 71   && lon >= 37    && lon <= 68  ) return '俄';
-            if (lat >= 49   && lat <= 55   && lon >= 12    && lon <= 23  ) return '捷克';
-            if (lat >= 47   && lat <= 49   && lon >= 9     && lon <= 18  ) return '奧地利';
-            if (lat >= 37   && lat <= 47   && lon >= 6     && lon <= 19  ) return '義大利';
-            if (lat >= 44   && lat <= 47   && lon >= 14    && lon <= 23  ) return '克羅埃西亞';
-            if (lat >= 43   && lat <= 47   && lon >= 19    && lon <= 24  ) return '塞爾維亞';
-            if (lat >= 45   && lat <= 52   && lon >= 22    && lon <= 40  ) return '烏克蘭';
-            if (lat >= 40   && lat <= 45   && lon >= 23    && lon <= 28  ) return '保加利亞';
-            if (lat >= 1    && lat <= 5    && lon >= 103   && lon <= 105 ) return '新加坡';
-            if (lat >= -12  && lat <= 5    && lon >= 95    && lon <= 141 ) return '印尼';
-            if (lat >= 28   && lat <= 38   && lon >= 68    && lon <= 98  ) return '印度';
-            if (lat >= 3    && lat <= 8    && lon >= 99    && lon <= 120 ) return '馬來西亞';
-            if (lat >= 12   && lat <= 24   && lon >= 92    && lon <= 101 ) return '緬甸';
-            if (lat >= 22   && lat <= 42   && lon >= 73    && lon <= 135 ) return '中國';
-            if (lat >= -60  && lat <= -50  && lon >= -75   && lon <= -55 ) return '智利';
-            if (lat >= -55  && lat <= -22  && lon >= -73   && lon <= -53 ) return '阿根廷';
-            if (lat >= -4   && lat <= 13   && lon >= -17   && lon <= 5   ) return '西非';
-            if (lat >= -35  && lat <= 5    && lon >= 10    && lon <= 45  ) return '非洲';
-            return null;
-        }
-
-        function getRouteName(lats, lons, idx) {
-            const n = lats.length;
-            let sumLat = 0, sumLon = 0;
-            for (let k = 0; k < n; k++) { sumLat += lats[k]; sumLon += lons[k]; }
-            const cLat = sumLat / n, cLon = sumLon / n;
-
-            // 若名稱數量與路線數量完全一致，則按順序直接對應
-            if (allDbNames.length === routes.length) return allDbNames[idx];
-
-            // 地理關鍵字匹配
-            const kw = geoKeyword(cLat, cLon);
-            if (kw) {
-                const matches = allDbNames.filter(nm => nm.includes(kw));
-                if (matches.length === 1) return matches[0];
-                if (matches.length > 1) return `${kw}地區路線（${matches.length} 條符合）`;
-            }
-
-            // 回退：顯示座標
-            return `路線 ${idx + 1}（${cLat.toFixed(2)}°N, ${cLon.toFixed(2)}°E）`;
-        }
+        // ====== 3. 摘要 ======
+        logDb(`<span style="color:#94a3b8">共 ${routes.length} 條路線，總座標點：${routes.reduce((s,r)=>s+r.len,0)}</span>`);
 
         const totalRoutes = routes.length;
         logDb(`<br>開始優化 <b style="color:#f8fafc">${totalRoutes}</b> 條路線`
@@ -1795,9 +1746,13 @@ if (dbDropArea) {
 
         // 寫回輔助函式（Worker 與 fallback 共用）
         function applyTour(r, tour) {
-            const { start, end, len } = routes[r];
-            const lats = allLats.slice(start, end);
-            const lons = allLons.slice(start, end);
+            const { name, idxArr, len } = routes[r];
+            const lats = new Float64Array(len);
+            const lons = new Float64Array(len);
+            for (let j = 0; j < len; j++) {
+                lats[j] = allLats[idxArr[j]];
+                lons[j] = allLons[idxArr[j]];
+            }
             const newLats = new Float64Array(len);
             const newLons = new Float64Array(len);
             for (let j = 0; j < len; j++) {
@@ -1805,13 +1760,13 @@ if (dbDropArea) {
                 newLons[j] = lons[tour[j]];
             }
             for (let j = 0; j < len; j++) {
-                const gi = start + j;
+                const gi = idxArr[j];
                 const leafIdx   = Math.floor(gi / 1000);
                 const posInLeaf = gi % 1000;
                 view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, newLats[j], true);
                 view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, newLons[j], true);
             }
-            const routeLabel = getRouteName(lats, lons, r);
+            const routeLabel = name;
             const elapsedSec = (Date.now() - tStart) / 1000;
             const done = r + 1;
             const remaining = totalRoutes - done;
@@ -1827,10 +1782,10 @@ if (dbDropArea) {
         // 嘗試用 Web Worker（不阻塞主執行緒，log 即時顯示）
         try {
             // 準備路線資料傳給 Worker
-            const routeData = routes.map(({ start, end, len }) => {
+            const routeData = routes.map(({ idxArr, len }) => {
                 const pts = [];
                 for (let j = 0; j < len; j++) {
-                    pts.push({ lat: allLats[start + j], lon: allLons[start + j] });
+                    pts.push({ lat: allLats[idxArr[j]], lon: allLons[idxArr[j]] });
                 }
                 return pts;
             });
@@ -1855,12 +1810,10 @@ if (dbDropArea) {
             // Fallback：同步處理（file:// 協議或舊瀏覽器）
             logDb(`<span style="color:#fbbf24">⚠ Web Worker 不可用，改用同步處理...</span>`);
             for (let r = 0; r < totalRoutes; r++) {
-                const { start, end, len } = routes[r];
-                const lats = allLats.slice(start, end);
-                const lons = allLons.slice(start, end);
+                const { idxArr, len } = routes[r];
                 const oldPoints = [...points];
                 points = [];
-                for (let j = 0; j < len; j++) points.push({ lat: lats[j], lon: lons[j] });
+                for (let j = 0; j < len; j++) points.push({ lat: allLats[idxArr[j]], lon: allLons[idxArr[j]] });
                 let tour;
                 if (stratId === 'nn') tour = runNearestNeighbor();
                 else if (stratId === 'greedy') tour = runGreedy();
