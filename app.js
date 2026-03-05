@@ -1482,17 +1482,6 @@ function clearAll() {
     }
 }
 
-// --- Mobile: Strategy Panel Collapse/Expand ---
-const strategyPanelEl = document.getElementById('strategyPanel');
-const strategyPanelHeader = document.getElementById('strategyPanelHeader');
-if (strategyPanelHeader && strategyPanelEl) {
-    strategyPanelHeader.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-            strategyPanelEl.classList.toggle('mobile-expanded');
-        }
-    });
-}
-
 // --- Tutorial Sub-tabs + Swipe ---
 function switchTutPanel(targetId) {
     document.querySelectorAll('.tutorial-tab').forEach(b => b.classList.remove('active'));
