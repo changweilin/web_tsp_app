@@ -1482,19 +1482,41 @@ function clearAll() {
     }
 }
 
-// --- Mobile: Strategy Panel Toggle ---
-const btnStrategyToggle = document.getElementById('btnStrategyToggle');
+// --- Mobile: Strategy Panel Collapse/Expand ---
 const strategyPanelEl = document.getElementById('strategyPanel');
-if (btnStrategyToggle && strategyPanelEl) {
-    btnStrategyToggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        strategyPanelEl.classList.toggle('mobile-open');
-        btnStrategyToggle.textContent = strategyPanelEl.classList.contains('mobile-open') ? '✕' : '⚙️';
+const strategyPanelHeader = document.getElementById('strategyPanelHeader');
+if (strategyPanelHeader && strategyPanelEl) {
+    strategyPanelHeader.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+            strategyPanelEl.classList.toggle('mobile-expanded');
+        }
     });
-    document.getElementById('map')?.addEventListener('click', () => {
-        strategyPanelEl.classList.remove('mobile-open');
-        btnStrategyToggle.textContent = '⚙️';
-    });
+}
+
+// --- Tutorial Sub-tabs + Swipe ---
+function switchTutPanel(targetId) {
+    document.querySelectorAll('.tutorial-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tutorial-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tutorial-tab[data-panel="${targetId}"]`)?.classList.add('active');
+    document.getElementById(targetId)?.classList.add('active');
+}
+document.querySelectorAll('.tutorial-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchTutPanel(btn.dataset.panel));
+});
+const tutPanelsContainer = document.getElementById('tutorialPanels');
+if (tutPanelsContainer) {
+    let swipeStartX = 0;
+    tutPanelsContainer.addEventListener('touchstart', e => {
+        swipeStartX = e.touches[0].clientX;
+    }, { passive: true });
+    tutPanelsContainer.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - swipeStartX;
+        if (Math.abs(dx) < 50) return;
+        const tabs = [...document.querySelectorAll('.tutorial-tab')];
+        const idx = tabs.findIndex(b => b.classList.contains('active'));
+        if (dx < 0 && idx < tabs.length - 1) switchTutPanel(tabs[idx + 1].dataset.panel);
+        if (dx > 0 && idx > 0) switchTutPanel(tabs[idx - 1].dataset.panel);
+    }, { passive: true });
 }
 
 // --- Tab Navigation Logic ---
