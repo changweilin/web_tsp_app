@@ -410,6 +410,8 @@ footer.controls {
     main.canvas-wrapper {
         display: flex !important;
         flex-direction: column;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
         overflow: visible !important;
         gap: 0;
         min-height: 0 !important;
@@ -447,9 +449,18 @@ footer.controls {
         padding: 10px 14px !important;
         border-radius: 12px;
         z-index: auto !important;
+        width: 100% !important;
     }
     #statsPanel:not(.hidden) { display: flex !important; }
     #statsContent { display: flex; flex-direction: column; gap: 8px; }
+    /* Stats panel: mobile re-layout for route items */
+    #extraStatsDetails > div {
+        flex-wrap: wrap !important;
+    }
+    #extraStatsDetails .replay-btn {
+        font-size: 0.7rem !important;
+        padding: 2px 5px !important;
+    }
 
     #btnStrategyToggle { display: none !important; }
 
@@ -461,6 +472,23 @@ footer.controls {
     .btn { padding: 12px 18px; font-size: 0.9rem; }
     footer.controls { gap: 8px; }
     footer.controls .btn { width: 100%; }
+
+    /* Export dropdown: open downward on mobile, prevent blocking other sections */
+    .dropdown { position: relative; }
+    .dropdown .dropdown-content {
+        bottom: auto !important;
+        top: 100% !important;
+        padding-bottom: 0;
+        padding-top: 6px;
+        left: 0;
+        right: 0;
+        min-width: 100%;
+    }
+    .dropdown .dropdown-content .dropdown-item {
+        padding: 10px 14px;
+        font-size: 0.85rem;
+        text-align: center;
+    }
 }
 
 /* Phone Portrait (≤480px) */
@@ -694,6 +722,7 @@ footer.controls {
 
 .stats-toggle-arrow { font-size: 0.8rem; color: #60a5fa; transition: transform 0.2s; flex-shrink: 0; }
 #statsPanel.collapsed #statsContent { display: none; }
+#statsPanel.collapsed #extraStatsDetails { display: none; }
 #statsPanel.collapsed .stats-toggle-arrow { transform: rotate(-90deg); }
 #statsPanelHeader { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; width: 100%; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px; }
 #statsPanelHeader:hover { opacity: 0.8; }
