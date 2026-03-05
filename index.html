@@ -35,6 +35,12 @@
                     style="width: 100%; height: 100%; border-radius: 15px; position: absolute; inset: 0; z-index: 1;">
                 </div>
 
+                <!-- Mobile: strategy panel toggle (hidden on desktop) -->
+                <button id="btnStrategyToggle" title="策略設定"
+                    style="position: absolute; top: 15px; left: 15px; z-index: 1001; display: none; width: 40px; height: 40px; border-radius: 8px; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.2); background: rgba(15, 23, 42, 0.85); color: white; cursor: pointer; backdrop-filter: blur(10px); font-size: 1.1rem;">
+                    ⚙️
+                </button>
+
                 <button id="btnLocation" title="我的位置" class="glass-panel"
                     style="position: absolute; bottom: 25px; right: 15px; z-index: 1000; width: 44px; height: 44px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,0.2); background: rgba(15, 23, 42, 0.7); color: white; cursor: pointer; backdrop-filter: blur(10px);">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
@@ -695,7 +701,7 @@
                 <p style="color: var(--text-muted);">上傳您的 <code>gpsjoystick_*.db</code> 檔案，我們將自動分析並修改內部路徑的座標順序，並產生新的 DB
                     給您匯入。</p>
 
-                <div style="display: flex; gap: 20px;">
+                <div class="db-row" style="display: flex; gap: 20px;">
                     <!-- DB Strategy Selection -->
                     <div class="glass-panel" style="flex: 1;">
                         <h3 style="margin-bottom: 10px; font-size: 1rem;">優化設定</h3>

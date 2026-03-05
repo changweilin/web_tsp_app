@@ -1482,6 +1482,21 @@ function clearAll() {
     }
 }
 
+// --- Mobile: Strategy Panel Toggle ---
+const btnStrategyToggle = document.getElementById('btnStrategyToggle');
+const strategyPanelEl = document.getElementById('strategyPanel');
+if (btnStrategyToggle && strategyPanelEl) {
+    btnStrategyToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        strategyPanelEl.classList.toggle('mobile-open');
+        btnStrategyToggle.textContent = strategyPanelEl.classList.contains('mobile-open') ? '✕' : '⚙️';
+    });
+    document.getElementById('map')?.addEventListener('click', () => {
+        strategyPanelEl.classList.remove('mobile-open');
+        btnStrategyToggle.textContent = '⚙️';
+    });
+}
+
 // --- Tab Navigation Logic ---
 const tabBtns = document.querySelectorAll('.tab-btn');
 const pages = document.querySelectorAll('.page');
