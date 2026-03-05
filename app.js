@@ -1482,6 +1482,14 @@ function clearAll() {
     }
 }
 
+// --- Collapsible Panels (desktop) ---
+document.getElementById('strategyPanelHeader')?.addEventListener('click', () => {
+    document.getElementById('strategyPanel').classList.toggle('collapsed');
+});
+document.getElementById('statsPanelHeader')?.addEventListener('click', () => {
+    document.getElementById('statsPanel').classList.toggle('collapsed');
+});
+
 // --- Tutorial Sub-tabs + Swipe ---
 function switchTutPanel(targetId) {
     document.querySelectorAll('.tutorial-tab').forEach(b => b.classList.remove('active'));

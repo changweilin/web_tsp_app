@@ -70,7 +70,7 @@
                             </path>
                         </svg>
                         策略選擇
-                        <span class="strategy-mobile-arrow" style="margin-left: auto; display: none; font-size: 0.8rem; color: #60a5fa;">▼</span>
+                        <span class="strategy-mobile-arrow">▼</span>
                     </h3>
                     <div class="strategy-list">
                         <!-- Category 1: Base Strategy -->
@@ -141,18 +141,24 @@
                 </div>
 
                 <div class="stats-panel glass-panel hidden" id="statsPanel" style="z-index: 1000;">
-                    <div class="stat-item"
-                        style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                        <div>
-                            <span class="label">總距離</span>
-                            <span class="value" id="totalDistance">0.00</span>
-                        </div>
-                        <button id="btnReplayAll" class="action-button secondary"
-                            style="padding: 4px 10px; font-size: 0.8rem; height: auto;">▶️ 全部慢動作重播</button>
+                    <div id="statsPanelHeader">
+                        <span style="font-size: 0.85rem; color: #94a3b8; font-weight: bold;">結果數據</span>
+                        <span class="stats-toggle-arrow">▼</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="label">座標點數</span>
-                        <span class="value" id="pointCount">0</span>
+                    <div id="statsContent">
+                        <div class="stat-item"
+                            style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                            <div>
+                                <span class="label">總距離</span>
+                                <span class="value" id="totalDistance">0.00</span>
+                            </div>
+                            <button id="btnReplayAll" class="action-button secondary"
+                                style="padding: 4px 10px; font-size: 0.8rem; height: auto;">▶️ 全部慢動作重播</button>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">座標點數</span>
+                            <span class="value" id="pointCount">0</span>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -219,13 +225,15 @@
                             </h3>
                             <p>從起點開始，每次都尋找<strong>距離目前位置最近的未訪問點</strong>，直到走完全部點。速度極快，但在最後幾步常因為只剩遠處的點而產生極長的路徑交叉。</p>
                             <div class="anim-box">
-                                <div class="anim-node" style="top: 70px; left: 25px;"></div>
-                                <div class="anim-node" style="top: 30px; left: 95px;"></div>
-                                <div class="anim-node" style="top: 42px; left: 165px;"></div>
-                                <div class="anim-node" style="top: 105px; left: 230px;"></div>
-                                <div class="anim-line nn-line1" style="--w: 80px;"></div>
-                                <div class="anim-line nn-line2" style="--w: 70px;"></div>
-                                <div class="anim-line nn-line3" style="--w: 90px;"></div>
+                                <div class="anim-inner">
+                                    <div class="anim-node" style="top: 70px; left: 25px;"></div>
+                                    <div class="anim-node" style="top: 30px; left: 95px;"></div>
+                                    <div class="anim-node" style="top: 42px; left: 165px;"></div>
+                                    <div class="anim-node" style="top: 105px; left: 230px;"></div>
+                                    <div class="anim-line nn-line1" style="--w: 80px;"></div>
+                                    <div class="anim-line nn-line2" style="--w: 70px;"></div>
+                                    <div class="anim-line nn-line3" style="--w: 90px;"></div>
+                                </div>
                             </div>
                             <div class="detail-panel">
                                 <div class="detail-inner">
@@ -287,15 +295,17 @@
                             </h3>
                             <p>一開始不決定起點，而是將所有可能的連線按長短排序，<strong>優先選擇最短的線段</strong>。只要不產生提早封閉的迴圈，或讓一個點連出三條線就加入。比 NN 稍慢但結果較好。</p>
                             <div class="anim-box">
-                                <div class="anim-node" style="top: 30px; left: 95px;"></div>
-                                <div class="anim-node" style="top: 42px; left: 145px;"></div>
-                                <div class="anim-node" style="top: 105px; left: 45px;"></div>
-                                <div class="anim-node" style="top: 85px; left: 95px;"></div>
-                                <div class="anim-node" style="top: 60px; left: 160px;"></div>
-                                <div class="anim-node" style="top: 15px; left: 180px;"></div>
-                                <div class="anim-line greedy-line1" style="--w: 50px;"></div>
-                                <div class="anim-line greedy-line2" style="--w: 50px;"></div>
-                                <div class="anim-line greedy-line3" style="--w: 45px;"></div>
+                                <div class="anim-inner">
+                                    <div class="anim-node" style="top: 30px; left: 95px;"></div>
+                                    <div class="anim-node" style="top: 42px; left: 145px;"></div>
+                                    <div class="anim-node" style="top: 105px; left: 45px;"></div>
+                                    <div class="anim-node" style="top: 85px; left: 95px;"></div>
+                                    <div class="anim-node" style="top: 60px; left: 160px;"></div>
+                                    <div class="anim-node" style="top: 15px; left: 180px;"></div>
+                                    <div class="anim-line greedy-line1" style="--w: 50px;"></div>
+                                    <div class="anim-line greedy-line2" style="--w: 50px;"></div>
+                                    <div class="anim-line greedy-line3" style="--w: 45px;"></div>
+                                </div>
                             </div>
                             <div class="detail-panel">
                                 <div class="detail-inner">
@@ -353,12 +363,14 @@
                             </h3>
                             <p>先從少數幾個點構成一個小迴圈，然後慢慢把其餘的點以<strong>「增加距離最少」</strong>的方式「插入」到既有的迴圈線段之間。非常穩定，很少有嚴重的交叉錯誤。</p>
                             <div class="anim-box">
-                                <div class="anim-node" style="top: 70px; left: 25px;"></div>
-                                <div class="anim-node" style="top: 70px; left: 165px;"></div>
-                                <div class="anim-node ins-node-new" style="top: 35px; left: 105px;"></div>
-                                <div class="anim-line ins-line-base"></div>
-                                <div class="anim-line ins-line-new1" style="--w: 85px;"></div>
-                                <div class="anim-line ins-line-new2" style="--w: 85px;"></div>
+                                <div class="anim-inner">
+                                    <div class="anim-node" style="top: 70px; left: 25px;"></div>
+                                    <div class="anim-node" style="top: 70px; left: 165px;"></div>
+                                    <div class="anim-node ins-node-new" style="top: 35px; left: 105px;"></div>
+                                    <div class="anim-line ins-line-base"></div>
+                                    <div class="anim-line ins-line-new1" style="--w: 85px;"></div>
+                                    <div class="anim-line ins-line-new2" style="--w: 85px;"></div>
+                                </div>
                             </div>
                             <div class="detail-panel">
                                 <div class="detail-inner">
@@ -422,14 +434,16 @@
                             </h3>
                             <p>專門用來<strong>消除路線交叉</strong>的局部優化法。枚舉所有不相鄰邊對，若反轉其間的片段能縮短總距離，就執行交換，反覆迭代直到無法再改善。</p>
                             <div class="anim-box">
-                                <div class="anim-node" style="top: 25px; left: 45px;"></div>
-                                <div class="anim-node" style="top: 25px; left: 130px;"></div>
-                                <div class="anim-node" style="top: 110px; left: 45px;"></div>
-                                <div class="anim-node" style="top: 110px; left: 130px;"></div>
-                                <div class="anim-line opt-line-bad1" style="--w: 120px;"></div>
-                                <div class="anim-line opt-line-bad2" style="--w: 120px;"></div>
-                                <div class="anim-line opt-line-good1" style="--w: 85px;"></div>
-                                <div class="anim-line opt-line-good2" style="--w: 85px;"></div>
+                                <div class="anim-inner">
+                                    <div class="anim-node" style="top: 25px; left: 45px;"></div>
+                                    <div class="anim-node" style="top: 25px; left: 130px;"></div>
+                                    <div class="anim-node" style="top: 110px; left: 45px;"></div>
+                                    <div class="anim-node" style="top: 110px; left: 130px;"></div>
+                                    <div class="anim-line opt-line-bad1" style="--w: 120px;"></div>
+                                    <div class="anim-line opt-line-bad2" style="--w: 120px;"></div>
+                                    <div class="anim-line opt-line-good1" style="--w: 85px;"></div>
+                                    <div class="anim-line opt-line-good2" style="--w: 85px;"></div>
+                                </div>
                             </div>
                             <div class="detail-panel">
                                 <div class="detail-inner">
@@ -488,18 +502,20 @@
                             </h3>
                             <p>比 2-Opt 強大，以 <strong>Double-Bridge Kick（4-Opt 擾動）</strong>為核心，每次隨機切割路徑為四段後重組，再對結果執行 2-Opt 精化。能跳出 2-Opt 容易卡住的局部最佳解。</p>
                             <div class="anim-box">
-                                <div class="anim-node" style="top: 20px; left: 80px;"></div>
-                                <div class="anim-node" style="top: 20px; left: 180px;"></div>
-                                <div class="anim-node" style="top: 70px; left: 220px;"></div>
-                                <div class="anim-node" style="top: 120px; left: 180px;"></div>
-                                <div class="anim-node" style="top: 120px; left: 80px;"></div>
-                                <div class="anim-node" style="top: 70px; left: 40px;"></div>
-                                <div class="anim-line lk-line-bad1"></div>
-                                <div class="anim-line lk-line-bad2"></div>
-                                <div class="anim-line lk-line-bad3"></div>
-                                <div class="anim-line lk-line-good1"></div>
-                                <div class="anim-line lk-line-good2"></div>
-                                <div class="anim-line lk-line-good3"></div>
+                                <div class="anim-inner">
+                                    <div class="anim-node" style="top: 20px; left: 80px;"></div>
+                                    <div class="anim-node" style="top: 20px; left: 180px;"></div>
+                                    <div class="anim-node" style="top: 70px; left: 220px;"></div>
+                                    <div class="anim-node" style="top: 120px; left: 180px;"></div>
+                                    <div class="anim-node" style="top: 120px; left: 80px;"></div>
+                                    <div class="anim-node" style="top: 70px; left: 40px;"></div>
+                                    <div class="anim-line lk-line-bad1"></div>
+                                    <div class="anim-line lk-line-bad2"></div>
+                                    <div class="anim-line lk-line-bad3"></div>
+                                    <div class="anim-line lk-line-good1"></div>
+                                    <div class="anim-line lk-line-good2"></div>
+                                    <div class="anim-line lk-line-good3"></div>
+                                </div>
                             </div>
                             <div class="detail-panel">
                                 <div class="detail-inner">
@@ -564,9 +580,11 @@
                             </h3>
                             <p>靈感來自冶金退火。初期高溫時有機率接受<strong>變差的解</strong>以跳出局部最佳陷阱；隨溫度 T 按幾何級數冷卻，接受爛解的機率趨近於零，最終精細收斂。</p>
                             <div class="anim-box">
-                                <div class="sa-bg"></div>
-                                <div class="sa-node"></div>
-                                <div class="anim-text">熱度 ➔ 冷卻</div>
+                                <div class="anim-inner">
+                                    <div class="sa-bg"></div>
+                                    <div class="sa-node"></div>
+                                    <div class="anim-text">熱度 ➔ 冷卻</div>
+                                </div>
                             </div>
                             <div class="detail-panel">
                                 <div class="detail-inner">
@@ -626,9 +644,11 @@
                             </h3>
                             <p>模擬生物演化。同時維護一個<strong>族群（多條路徑）</strong>，每世代計算適應度後，透過錦標賽選擇、Order Crossover 交叉與隨機突變產生下一代，逐代收斂至最佳解。</p>
                             <div class="anim-box">
-                                <div class="ga-line1"></div>
-                                <div class="ga-line2"></div>
-                                <div class="anim-text" style="top: 60px; bottom: auto;">DNA 交配</div>
+                                <div class="anim-inner">
+                                    <div class="ga-line1"></div>
+                                    <div class="ga-line2"></div>
+                                    <div class="anim-text" style="top: 60px; bottom: auto;">DNA 交配</div>
+                                </div>
                             </div>
                             <div class="detail-panel">
                                 <div class="detail-inner">

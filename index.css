@@ -407,6 +407,7 @@ footer.controls {
         flex-direction: column;
         overflow: visible !important;
         gap: 0;
+        min-height: 0 !important;
     }
     /* Map fills remaining space */
     #map {
@@ -426,7 +427,6 @@ footer.controls {
         border-radius: 12px 12px 0 0;
         z-index: auto !important;
     }
-    .strategy-mobile-arrow { display: none !important; }
 
     /* Stats panel: below map, static horizontal bar */
     #statsPanel {
@@ -444,6 +444,11 @@ footer.controls {
     }
     #statsPanel:not(.hidden) { display: flex !important; }
     #statsPanel .stat-item { gap: 8px; }
+    #statsPanelHeader { display: none !important; }
+    .strategy-mobile-arrow { display: none !important; }
+    /* 2-column checkboxes for compact mobile layout */
+    .strategy-list > div { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 0; }
+    .strategy-list > div > span { grid-column: 1 / -1; }
 
     #btnStrategyToggle { display: none !important; }
 
@@ -672,14 +677,39 @@ footer.controls {
     line-height: 1.6;
 }
 
+/* Collapsible panels */
+.strategy-mobile-arrow {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: #60a5fa;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+#strategyPanel.collapsed .strategy-list { display: none; }
+#strategyPanel.collapsed .strategy-mobile-arrow { transform: rotate(-90deg); }
+
+.stats-toggle-arrow { font-size: 0.8rem; color: #60a5fa; transition: transform 0.2s; flex-shrink: 0; }
+#statsPanel.collapsed #statsContent { display: none; }
+#statsPanel.collapsed .stats-toggle-arrow { transform: rotate(-90deg); }
+#statsPanelHeader { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; width: 100%; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 4px; }
+#statsPanelHeader:hover { opacity: 0.8; }
+
 .anim-box {
     width: 100%;
     height: 150px;
     background: rgba(0, 0, 0, 0.3);
     border-radius: 8px;
-    position: relative;
     overflow: hidden;
     margin-top: 10px;
+    display: flex;
+    justify-content: center;
+}
+.anim-inner {
+    position: relative;
+    width: 280px;
+    height: 150px;
+    flex-shrink: 0;
+    overflow: hidden;
 }
 
 .anim-node {
