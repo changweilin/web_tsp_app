@@ -195,6 +195,11 @@ footer.controls {
     box-shadow: none;
 }
 
+.btn.secondary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 .btn.secondary {
     background: var(--panel-bg);
     border: 1px solid var(--secondary);
@@ -519,6 +524,9 @@ footer.controls {
 
 .dropdown:hover .dropdown-content {
     display: block;
+}
+.dropdown:has(button:disabled):hover .dropdown-content {
+    display: none;
 }
 
 .dropdown-item {

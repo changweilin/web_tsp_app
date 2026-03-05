@@ -272,8 +272,7 @@ function resetRouteState() {
         btnCalculate.classList.add('secondary');
     }
 
-    const exportDropdown = document.getElementById('exportDropdown');
-    exportDropdown.classList.add('hidden');
+    document.getElementById('btnExportMenu').disabled = true;
 
     if (typeof saveState === 'function') saveState();
 }
@@ -836,8 +835,7 @@ function renderResults(results) {
         initialPolyline.setStyle({ opacity: 0.2, weight: 2 });
     }
 
-    const exportDropdown = document.getElementById('exportDropdown');
-    exportDropdown.classList.remove('hidden');
+    document.getElementById('btnExportMenu').disabled = false;
 
     loadingOverlay.classList.add('hidden');
     isCalculating = false;
@@ -1475,8 +1473,7 @@ function clearAll() {
     btnCalculate.classList.remove('primary');
     btnCalculate.classList.add('secondary');
 
-    const exportDropdown = document.getElementById('exportDropdown');
-    if (exportDropdown) exportDropdown.classList.add('hidden');
+    document.getElementById('btnExportMenu').disabled = true;
     updateStats();
 
     if (this === btnClear) {
