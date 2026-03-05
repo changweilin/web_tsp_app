@@ -1547,7 +1547,44 @@ if (dbDropArea) {
 
     dbThresholdSlider.addEventListener('input', () => {
         dbThresholdVal.textContent = dbThresholdSlider.value;
+        saveDbSettings();
     });
+
+    function saveDbSettings() {
+        localStorage.setItem('db_settings', JSON.stringify({
+            strat: dbStratSelect.value,
+            opt: dbOptSelect.value,
+            skipLarge: dbSkipLarge.checked,
+            skipLargeThreshold: dbSkipLargeThreshold.value,
+            timeout: dbTimeoutSelect.value,
+            threshold: dbThresholdSlider.value,
+        }));
+    }
+
+    function loadDbSettings() {
+        const raw = localStorage.getItem('db_settings');
+        if (!raw) return;
+        try {
+            const s = JSON.parse(raw);
+            if (s.strat !== undefined) dbStratSelect.value = s.strat;
+            if (s.opt !== undefined) dbOptSelect.value = s.opt;
+            if (s.skipLarge !== undefined) dbSkipLarge.checked = s.skipLarge;
+            if (s.skipLargeThreshold !== undefined) dbSkipLargeThreshold.value = s.skipLargeThreshold;
+            if (s.timeout !== undefined) dbTimeoutSelect.value = s.timeout;
+            if (s.threshold !== undefined) {
+                dbThresholdSlider.value = s.threshold;
+                dbThresholdVal.textContent = s.threshold;
+            }
+        } catch (e) {}
+    }
+
+    dbStratSelect.addEventListener('change', saveDbSettings);
+    dbOptSelect.addEventListener('change', saveDbSettings);
+    dbSkipLarge.addEventListener('change', saveDbSettings);
+    dbSkipLargeThreshold.addEventListener('change', saveDbSettings);
+    dbTimeoutSelect.addEventListener('change', saveDbSettings);
+
+    loadDbSettings();
 
     async function processDbFile(file) {
         if (!file.name.endsWith('.db')) {
