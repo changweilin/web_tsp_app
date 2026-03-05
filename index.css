@@ -417,38 +417,34 @@ footer.controls {
         flex: 1;
         min-height: 260px;
     }
-    /* Strategy panel: above map, always expanded */
+    /* Strategy panel: above map, collapsible on mobile */
     #strategyPanel {
         position: static !important;
         order: -1;
         min-width: 0 !important;
         max-height: none !important;
         overflow: visible !important;
-        border-radius: 12px 12px 0 0;
+        border-radius: 12px;
         z-index: auto !important;
     }
+    /* 2-column checkboxes so collapsed → expanded doesn't take too much height */
+    .strategy-list > div { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 0; }
+    .strategy-list > div > span { grid-column: 1 / -1; }
 
-    /* Stats panel: below map, static horizontal bar */
+    /* Stats panel: below map, collapsible on mobile */
     #statsPanel {
         position: static !important;
         top: auto !important;
         right: auto !important;
         order: 2;
-        flex-direction: row !important;
-        flex-wrap: wrap;
-        gap: 8px !important;
-        padding: 8px 14px !important;
-        border-radius: 0 0 12px 12px;
+        flex-direction: column !important;
+        gap: 6px !important;
+        padding: 10px 14px !important;
+        border-radius: 12px;
         z-index: auto !important;
-        align-items: center !important;
     }
     #statsPanel:not(.hidden) { display: flex !important; }
-    #statsPanel .stat-item { gap: 8px; }
-    #statsPanelHeader { display: none !important; }
-    .strategy-mobile-arrow { display: none !important; }
-    /* 2-column checkboxes for compact mobile layout */
-    .strategy-list > div { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 0; }
-    .strategy-list > div > span { grid-column: 1 / -1; }
+    #statsContent { display: flex; flex-direction: column; gap: 8px; }
 
     #btnStrategyToggle { display: none !important; }
 

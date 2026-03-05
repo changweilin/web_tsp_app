@@ -306,7 +306,9 @@ function updateStats() {
     pointCountEl.textContent = points.length;
 
     if (points.length > 0) {
+        const wasHidden = statsPanel.classList.contains('hidden');
         statsPanel.classList.remove('hidden');
+        if (wasHidden && window.innerWidth <= 768) statsPanel.classList.add('collapsed');
     } else {
         statsPanel.classList.add('hidden');
     }
@@ -1482,13 +1484,18 @@ function clearAll() {
     }
 }
 
-// --- Collapsible Panels (desktop) ---
+// --- Collapsible Panels ---
 document.getElementById('strategyPanelHeader')?.addEventListener('click', () => {
     document.getElementById('strategyPanel').classList.toggle('collapsed');
 });
 document.getElementById('statsPanelHeader')?.addEventListener('click', () => {
     document.getElementById('statsPanel').classList.toggle('collapsed');
 });
+// Default collapsed on mobile
+if (window.innerWidth <= 768) {
+    document.getElementById('strategyPanel')?.classList.add('collapsed');
+    document.getElementById('statsPanel')?.classList.add('collapsed');
+}
 
 // --- Tutorial Sub-tabs + Swipe ---
 function switchTutPanel(targetId) {
