@@ -399,7 +399,7 @@ footer.controls {
 @media (max-width: 768px) {
     body { padding: 8px; overflow-y: auto; align-items: flex-start; }
     .app-container { gap: 8px; min-height: 100dvh; height: auto; }
-    .page { min-height: auto; flex-shrink: 0; }
+    .page { flex: none !important; min-height: 0; }
 
     header h1 { font-size: 1.4rem; flex-direction: row; flex-wrap: wrap; gap: 6px; }
     .glass-panel { padding: 14px; }
@@ -415,16 +415,16 @@ footer.controls {
         align-items: stretch !important;
         overflow: visible !important;
         gap: 0;
-        min-height: 200px !important;
-        flex: 1 1 0 !important;
+        flex: none !important;
+        min-height: 0 !important;
     }
-    /* Map fills remaining space */
+    /* Map gets a fixed viewport-based height instead of flex-grow */
     #map {
         position: relative !important;
         inset: auto !important;
-        height: auto !important;
-        flex: 1;
+        height: 55vh !important;
         min-height: 200px;
+        flex: none !important;
     }
     /* Strategy panel: above map, collapsible on mobile */
     #strategyPanel {
@@ -453,7 +453,7 @@ footer.controls {
         z-index: auto !important;
         width: 100% !important;
     }
-    #statsPanel:not(.hidden) { display: flex !important; }
+    #statsPanel { display: flex !important; }
     #statsContent { display: flex; flex-direction: column; gap: 8px; }
     /* Stats panel: mobile re-layout for route items */
     #extraStatsDetails > div {
