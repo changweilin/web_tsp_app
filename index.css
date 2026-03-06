@@ -397,8 +397,8 @@ footer.controls {
 
 /* Tablet Portrait & Phone Landscape (≤768px) */
 @media (max-width: 768px) {
-    body { padding: 8px; }
-    .app-container { gap: 8px; height: 100dvh; }
+    body { padding: 8px; overflow-y: auto; }
+    .app-container { gap: 8px; min-height: 100dvh; height: auto; }
 
     header h1 { font-size: 1.4rem; flex-direction: row; flex-wrap: wrap; gap: 6px; }
     .glass-panel { padding: 14px; }
@@ -414,7 +414,8 @@ footer.controls {
         align-items: stretch !important;
         overflow: visible !important;
         gap: 0;
-        min-height: 0 !important;
+        min-height: 200px !important;
+        flex: 1 1 0 !important;
     }
     /* Map fills remaining space */
     #map {
@@ -422,7 +423,7 @@ footer.controls {
         inset: auto !important;
         height: auto !important;
         flex: 1;
-        min-height: 260px;
+        min-height: 200px;
     }
     /* Strategy panel: above map, collapsible on mobile */
     #strategyPanel {
@@ -474,13 +475,13 @@ footer.controls {
     footer.controls .btn { width: 100%; }
     footer.controls .dropdown { width: 100%; }
 
-    /* Export dropdown: open downward on mobile, prevent blocking other sections */
+    /* Export dropdown: open upward on mobile so it doesn't block content below */
     .dropdown { position: relative; }
     .dropdown .dropdown-content {
-        bottom: auto !important;
-        top: 100% !important;
-        padding-bottom: 0;
-        padding-top: 6px;
+        bottom: 100% !important;
+        top: auto !important;
+        padding-bottom: 6px;
+        padding-top: 0;
         left: 0;
         right: 0;
         min-width: 100%;
