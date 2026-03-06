@@ -472,6 +472,7 @@ footer.controls {
     .btn { padding: 12px 18px; font-size: 0.9rem; }
     footer.controls { gap: 8px; }
     footer.controls .btn { width: 100%; }
+    footer.controls .dropdown { width: 100%; }
 
     /* Export dropdown: open downward on mobile, prevent blocking other sections */
     .dropdown { position: relative; }
@@ -507,8 +508,9 @@ footer.controls {
 
     /* Footer: 2-column grid */
     footer.controls { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-    footer.controls #exportDropdown { grid-column: 1 / -1; }
     footer.controls .btn { width: auto; padding: 10px 6px; font-size: 0.8rem; }
+    footer.controls .dropdown { width: 100%; }
+    footer.controls .dropdown .btn { width: 100%; }
 
     #dbLogArea { max-height: 180px !important; }
 
