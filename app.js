@@ -1353,6 +1353,7 @@ function generateOptimizedGeoJSON(tour, routeName) {
 // Button bindings
 btnCalculate.addEventListener('click', calculateTSP);
 
+L.DomEvent.disableClickPropagation(btnLocation);
 btnLocation.addEventListener('click', () => {
     map.locate({ setView: true, maxZoom: 16 });
 });
