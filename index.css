@@ -397,8 +397,9 @@ footer.controls {
 
 /* Tablet Portrait & Phone Landscape (≤768px) */
 @media (max-width: 768px) {
-    body { padding: 8px; overflow-y: auto; }
+    body { padding: 8px; overflow-y: auto; align-items: flex-start; }
     .app-container { gap: 8px; min-height: 100dvh; height: auto; }
+    .page { min-height: auto; flex-shrink: 0; }
 
     header h1 { font-size: 1.4rem; flex-direction: row; flex-wrap: wrap; gap: 6px; }
     .glass-panel { padding: 14px; }
@@ -471,7 +472,7 @@ footer.controls {
 
     /* Buttons */
     .btn { padding: 12px 18px; font-size: 0.9rem; }
-    footer.controls { gap: 8px; }
+    footer.controls { gap: 8px; flex-shrink: 0; }
     footer.controls .btn { width: 100%; }
     footer.controls .dropdown { width: 100%; }
 
