@@ -1665,20 +1665,18 @@ if (dbDropArea) {
         dbDropArea.style.opacity = '0.5';
         dbLogArea.innerHTML = '';
 
+        let anySuccess = false;
         if (!isMerge) {
-            // Original behavior: One by one
-            let processedCount = 0;
-            let anySuccess = false;
             for (let i = 0; i < selectedDbFiles.length; i++) {
                 const res = await analyzeAndOptimizeDb(selectedDbFiles[i], mainFolder, i + 1, selectedDbFiles.length);
                 if (res.success) anySuccess = true;
-                processedCount++;
             }
-            if (anySuccess) await finalizeZip(zip);
         } else {
-            // New behavior: Merge multiple .db into one
-            await mergeAndOptimizeMultipleDbs(selectedDbFiles, mainFolder);
+            const res = await mergeAndOptimizeMultipleDbs(selectedDbFiles, mainFolder);
+            if (res && res.success) anySuccess = true;
         }
+
+        if (anySuccess) await finalizeZip(zip);
 
         dbStartOptimize.disabled = false;
         dbDropArea.style.pointerEvents = '';
@@ -1785,6 +1783,7 @@ if (dbDropArea) {
         const allLats = new Float64Array(totalPts);
         const allLons = new Float64Array(totalPts);
         for (let k = 0; k < nodeCount; k++) {
+            if (k % 10 === 0) await new Promise(res => setTimeout(res, 0));
             for (let j = 0; j < 1000; j++) {
                 allLats[k * 1000 + j] = view.getFloat64(latRun[k] + 8 + j * 8, true);
                 allLons[k * 1000 + j] = view.getFloat64(lonRun[k] + 8 + j * 8, true);
@@ -1795,6 +1794,7 @@ if (dbDropArea) {
         const routes = [];
         let start = 0;
         for (let i = 1; i < totalPts; i++) {
+            if (i % 10000 === 0) await new Promise(res => setTimeout(res, 0));
             const d = getHaversineDistance(allLats[i - 1], allLons[i - 1], allLats[i], allLons[i]);
             if (d > 300000) {
                 const len = i - start;
@@ -1828,15 +1828,30 @@ if (dbDropArea) {
         for (let i = 0; i < tracks.length; i++) {
             const t = tracks[i];
             const routeData = t.pts;
-            const res = await new Promise(resolve => {
+            const res = await new Promise((resolve, reject) => {
                 const worker = new Worker('worker.js');
+                const timeout = setTimeout(() => {
+                    worker.terminate();
+                    resolve({ name: t.name + " (逾時)", pts: routeData });
+                }, routeTimeoutMs > 0 ? routeTimeoutMs + 5000 : 3600000);
+
                 worker.onmessage = (e) => {
                     if (e.data.type === 'db-route-done') {
+                        clearTimeout(timeout);
                         worker.terminate();
                         const tour = e.data.tour;
                         const optimizedPts = tour.map(idx => routeData[idx]);
                         resolve({ name: t.name, pts: optimizedPts });
+                    } else if (e.data.type === 'db-batch-done') {
+                        clearTimeout(timeout);
+                        worker.terminate();
+                        resolve({ name: t.name, pts: routeData });
                     }
+                };
+                worker.onerror = (err) => {
+                    clearTimeout(timeout);
+                    worker.terminate();
+                    resolve({ name: t.name + " (錯誤)", pts: routeData });
                 };
                 worker.postMessage({ type: 'db-batch', routes: [routeData], stratId, optId, routeTimeoutMs });
             });
@@ -1893,6 +1908,66 @@ if (dbDropArea) {
                 gpxFolder.file(`${safeName}.gpx`, gpxContent);
             });
         }
+        return { success: true };
+    }
+
+    async function mergeAndOptimizeMultipleDbs(files, zipFolder) {
+        logDb(`<br><span style="color:#60a5fa">--- 開始合併 ${files.length} 個 .db 檔案 ---</span>`);
+
+        let allTracks = [];
+        let firstFileResult = null;
+
+        for (let i = 0; i < files.length; i++) {
+            const data = await readDbStructure(files[i]);
+            if (!data) {
+                logDb(`<span style="color:#ef4444">⚠ 讀取 ${files[i].name} 失敗，跳過。</span>`);
+                continue;
+            }
+            if (!firstFileResult) firstFileResult = data;
+
+            for (let j = 0; j < data.routes.length; j++) {
+                const r = data.routes[j];
+                if (j % 5 === 0) await new Promise(res => setTimeout(res, 0));
+                const pts = [];
+                for (let k = 0; k < r.len; k++) pts.push({ lat: data.allLats[r.idxArr[k]], lon: data.allLons[r.idxArr[k]] });
+                allTracks.push({ name: `${files[i].name.replace(/\.db$/i, '')}_${r.name}`, pts });
+            }
+
+            dbProgressLabel.textContent = `載入中：${files[i].name} (${i + 1}/${files.length})`;
+            dbProgressBar.style.width = ((i + 1) / files.length * 20) + '%';
+        }
+
+        if (allTracks.length === 0 || !firstFileResult) {
+            logDb(`<span style="color:#ef4444">找不到任何有效的軌跡資料。</span>`);
+            return;
+        }
+
+        logDb(`找到 ${allTracks.length} 條軌跡。開始優化...`);
+
+        // Perform TSP on each track
+        const optimizedResults = await runTspOnTracks(allTracks);
+
+        // Merge into a single buffer using the first file as template
+        const capacity = firstFileResult.latRun.length * 1000;
+        const totalPtsToSave = optimizedResults.reduce((sum, res) => sum + res.pts.length, 0);
+
+        if (totalPtsToSave > capacity) {
+            logDb(`<span style="color:#fbbf24">⚠ 警告：總點數 (${totalPtsToSave}) 超過目標檔案容量 (${capacity})，部分軌跡將被截斷。</span>`);
+        }
+
+        const workBuf = writeTracksToBuffer(firstFileResult.bytes, optimizedResults, firstFileResult.latRun, firstFileResult.lonRun, capacity);
+        zipFolder.file(`merged_optimized.db`, workBuf);
+
+        if (dbExportGpx.checked) {
+            const gpxFolder = zipFolder.folder(`merged_gpx`);
+            optimizedResults.forEach(res => {
+                const gpxContent = generateOptimizedGpxXML(new Array(res.pts.length).fill(0).map((_, i) => i), res.name, res.pts);
+                const safeName = res.name.replace(/[ \/+()]/g, '_').replace(/_+/g, '_');
+                gpxFolder.file(`${safeName}.gpx`, gpxContent);
+            });
+        }
+
+        logDb(`<br><span style="color:#34d399; font-weight:bold;">✅ 合併優化完成！</span>`);
         return { success: true };
     }
 }
