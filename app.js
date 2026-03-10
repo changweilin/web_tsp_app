@@ -1548,16 +1548,23 @@ const dbLogArea = document.getElementById('dbLogArea');
 const dbStratSelect = document.getElementById('dbStratSelect');
 const dbOptSelect = document.getElementById('dbOptSelect');
 const dbProgressWrap = document.getElementById('dbProgressWrap');
-const dbProgressBar  = document.getElementById('dbProgressBar');
+const dbProgressBar = document.getElementById('dbProgressBar');
 const dbProgressLabel = document.getElementById('dbProgressLabel');
-const dbProgressPct  = document.getElementById('dbProgressPct');
-const dbProgressRoute  = document.getElementById('dbProgressRoute');
-const dbSkipLarge           = document.getElementById('dbSkipLarge');
-const dbSkipLargeThreshold  = document.getElementById('dbSkipLargeThreshold');
-const dbTimeoutSelect  = document.getElementById('dbTimeoutSelect');
-const dbThresholdSlider= document.getElementById('dbThresholdSlider');
-const dbThresholdVal   = document.getElementById('dbThresholdVal');
-const dbAbortBtn       = document.getElementById('dbAbortBtn');
+const dbProgressPct = document.getElementById('dbProgressPct');
+const dbProgressRoute = document.getElementById('dbProgressRoute');
+const dbSkipLarge = document.getElementById('dbSkipLarge');
+const dbSkipLargeThreshold = document.getElementById('dbSkipLargeThreshold');
+const dbTimeoutSelect = document.getElementById('dbTimeoutSelect');
+const dbThresholdSlider = document.getElementById('dbThresholdSlider');
+const dbThresholdVal = document.getElementById('dbThresholdVal');
+const dbAbortBtn = document.getElementById('dbAbortBtn');
+
+const dbMergeTracks = document.getElementById('dbMergeTracks');
+const dbExportGpx = document.getElementById('dbExportGpx');
+const dbFileStatus = document.getElementById('dbFileStatus');
+const dbStartOptimize = document.getElementById('dbStartOptimize');
+
+let selectedDbFiles = [];
 
 if (dbDropArea) {
     let dbCurrentWorker = null;
@@ -1597,6 +1604,8 @@ if (dbDropArea) {
             skipLargeThreshold: dbSkipLargeThreshold.value,
             timeout: dbTimeoutSelect.value,
             threshold: dbThresholdSlider.value,
+            mergeTracks: dbMergeTracks.checked,
+            exportGpx: dbExportGpx.checked,
         }));
     }
 
@@ -1614,7 +1623,9 @@ if (dbDropArea) {
                 dbThresholdSlider.value = s.threshold;
                 dbThresholdVal.textContent = s.threshold;
             }
-        } catch (e) {}
+            if (s.mergeTracks !== undefined) dbMergeTracks.checked = s.mergeTracks;
+            if (s.exportGpx !== undefined) dbExportGpx.checked = s.exportGpx;
+        } catch (e) { }
     }
 
     dbStratSelect.addEventListener('change', saveDbSettings);
@@ -1622,125 +1633,166 @@ if (dbDropArea) {
     dbSkipLarge.addEventListener('change', saveDbSettings);
     dbSkipLargeThreshold.addEventListener('change', saveDbSettings);
     dbTimeoutSelect.addEventListener('change', saveDbSettings);
+    dbMergeTracks.addEventListener('change', saveDbSettings);
+    dbExportGpx.addEventListener('change', saveDbSettings);
 
     loadDbSettings();
 
-    async function processDbFile(file) {
-        if (!file.name.endsWith('.db')) {
-            logDb(`<span style="color:#ef4444">錯誤: 請上傳 .db 檔案</span>`);
-            return;
+    dbStartOptimize.addEventListener('click', startDbOptimization);
+
+    function handleFilesSelection(files) {
+        selectedDbFiles = Array.from(files).filter(f => f.name.endsWith('.db'));
+        if (selectedDbFiles.length > 0) {
+            dbFileStatus.textContent = `已選擇 ${selectedDbFiles.length} 個 .db 檔案`;
+            dbStartOptimize.disabled = false;
+        } else {
+            dbFileStatus.textContent = "未選擇有效的 .db 檔案";
+            dbStartOptimize.disabled = true;
         }
+    }
 
-        const stratId = dbStratSelect.value;
-        const optId   = dbOptSelect.value;
+    dbDropArea.addEventListener('click', () => dbInput.click());
+    dbDropArea.addEventListener('dragover', (e) => { e.preventDefault(); dbDropArea.style.borderColor = '#3b82f6'; });
+    dbDropArea.addEventListener('dragleave', (e) => { dbDropArea.style.borderColor = 'rgba(255,255,255,0.2)'; });
+    dbDropArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dbDropArea.style.borderColor = 'rgba(255,255,255,0.2)';
+        handleFilesSelection(e.dataTransfer.files);
+    });
+    dbInput.addEventListener('change', (e) => {
+        handleFilesSelection(e.target.files);
+    });
 
-        const skipLarge          = dbSkipLarge.checked;
-        const skipLargeThreshold = parseInt(dbSkipLargeThreshold.value, 10) || 256;
-        const routeTimeoutMs  = parseInt(dbTimeoutSelect.value, 10);
-        const improvThreshold = parseInt(dbThresholdSlider.value, 10) / 100;
+    async function startDbOptimization() {
+        if (selectedDbFiles.length === 0) return;
 
-        // 人類可讀的 TSP 方法名稱（用於檔名後綴）
-        const stratLabel = { nn: 'nn', greedy: 'greedy', insertion: 'ins' }[stratId] || stratId;
-        const optLabel   = { none: 'noopt', '2opt': '2opt', lk: 'lk', sa: 'sa', ga: 'ga' }[optId] || optId;
-        const methodSuffix = `${stratLabel}_${optLabel}`;
+        const isMerge = dbMergeTracks.checked;
+        const zip = new JSZip();
+        const mainFolder = zip.folder(`optimized_results_${new Date().toISOString().slice(0, 10)}`);
 
-        logDb(`<br><span style="color:#60a5fa">--- 開始處理: ${file.name} ---</span>`);
-        logDb(`<span style="color:#94a3b8">TSP 方法：${stratLabel.toUpperCase()} + ${optLabel.toUpperCase()}</span>`);
-
-        // 禁用拖放區避免重複觸發
+        dbProgressWrap.style.display = 'flex';
+        dbStartOptimize.disabled = true;
         dbDropArea.style.pointerEvents = 'none';
         dbDropArea.style.opacity = '0.5';
+        dbLogArea.innerHTML = '';
 
-        // 顯示進度條
-        dbProgressWrap.style.display = 'flex';
-        dbProgressBar.style.width = '0%';
-        dbProgressPct.textContent = '0%';
-        dbProgressLabel.textContent = '讀取檔案...';
-        dbProgressRoute.textContent = '';
-        dbAbortBtn.style.display = 'inline-block';
-        let wasAborted = false;
+        if (!isMerge) {
+            // Original behavior: One by one
+            let processedCount = 0;
+            let anySuccess = false;
+            for (let i = 0; i < selectedDbFiles.length; i++) {
+                const res = await analyzeAndOptimizeDb(selectedDbFiles[i], mainFolder, i + 1, selectedDbFiles.length);
+                if (res.success) anySuccess = true;
+                processedCount++;
+            }
+            if (anySuccess) await finalizeZip(zip);
+        } else {
+            // New behavior: Merge multiple .db into one
+            await mergeAndOptimizeMultipleDbs(selectedDbFiles, mainFolder);
+        }
 
-        const buffer  = await file.arrayBuffer();
-        // ★ 立即複製一份作為寫入目標，保留原始 buffer 不動
+        dbStartOptimize.disabled = false;
+        dbDropArea.style.pointerEvents = '';
+        dbDropArea.style.opacity = '';
+    }
+
+    async function finalizeZip(zip) {
+        dbProgressLabel.textContent = "正在生成 ZIP 打包檔...";
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `optimized_results_${new Date().getTime()}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        logDb(`<br><span style="color:#fbbf24; font-weight:bold;">📥 已下載所有優化結果 ZIP</span>`);
+        dbProgressLabel.textContent = "分析完成！";
+    }
+
+    // Helper for Haversine distance (used in readDbStructure)
+    function getHaversineDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371e3; // metres
+        const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // in metres
+    }
+
+    // Helper for GPX generation (simplified, assuming `points` is globally available or passed)
+    function generateOptimizedGpxXML(tour, name, pts) {
+        let gpx = `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" creator="GPS Joystick DB Optimizer" version="1.1">
+  <trk>
+    <name>${name}</name>
+    <trkseg>`;
+        for (let i = 0; i < tour.length; i++) {
+            const p = pts[tour[i]];
+            gpx += `      <trkpt lat="${p.lat}" lon="${p.lon}"></trkpt>\n`;
+        }
+        gpx += `    </trkseg>
+  </trk>
+</gpx>`;
+        return gpx;
+    }
+
+    async function readDbStructure(file) {
+        const buffer = await file.arrayBuffer();
         const workBuf = buffer.slice(0);
-        const bytes   = new Uint8Array(buffer);   // 只讀，用於掃描名稱與 header
+        const bytes = new Uint8Array(buffer);
+        const view = new DataView(workBuf);
 
-        // ====== 1. 從 DB 二進位掃描路線名稱 ======
-        // Realm DB 以 AAAA(0x41414141) + 0x11 + 0x00 + 0x00 + length + UTF-8 string 儲存字串
-        logDb(`<span style="color:#94a3b8">掃描路線名稱...</span>`);
-        await new Promise(res => setTimeout(res, 5));
-
+        // Scan names
         const decoder = new TextDecoder('utf-8');
         const allDbNames = [];
         for (let i = 0; i <= bytes.length - 8; i++) {
-            if (bytes[i] === 0x41 && bytes[i+1] === 0x41 && bytes[i+2] === 0x41 && bytes[i+3] === 0x41 &&
-                bytes[i+4] === 0x11 && bytes[i+5] === 0x00 && bytes[i+6] === 0x00) {
+            if (bytes[i] === 0x41 && bytes[i + 1] === 0x41 && bytes[i + 2] === 0x41 && bytes[i + 3] === 0x41 &&
+                bytes[i + 4] === 0x11 && bytes[i + 5] === 0x00 && bytes[i + 6] === 0x00) {
                 const len = bytes[i + 7];
                 if (len >= 2 && i + 8 + len <= bytes.length) {
                     try {
                         const name = decoder.decode(bytes.subarray(i + 8, i + 8 + len)).replace(/\0/g, '').trim();
-                        if (name.length >= 2 && !name.startsWith('http') &&
-                            !name.includes('Landmark') && !name.includes('Recreational Area')) {
-                            allDbNames.push(name);
-                        }
-                    } catch (e) { /* skip non-UTF-8 */ }
+                        if (name.length >= 2 && !name.startsWith('http')) allDbNames.push(name);
+                    } catch (e) { }
                 }
             }
         }
 
-        // ====== 2. 掃描座標資料（Realm leaf-node 串流解析法）======
-        // Realm 以 B-tree 儲存座標：所有 lat 值連續存為一個大陣列，所有 lon 值另一個大陣列，
-        // 各自分割成 1000 元素的 leaf node（header = AAAA 0x0C 0x00 0x03 0xE8）。
-        // 路線邊界由 lat 與 lon 同時出現大幅跳躍（> 0.3°）來偵測。
-        logDb(`<span style="color:#94a3b8">掃描座標資料 (Realm leaf-node 格式)...</span>`);
-        await new Promise(res => setTimeout(res, 5));
-
-        // view 指向複製品 workBuf，所有 setFloat64 寫入都進 workBuf，原始 buffer 不受影響
-        const view = new DataView(workBuf);
-
-        // 2a. 找所有 AAAA+0x0C+0x00+0x03+0xE8 header（8-byte 對齊掃描）
+        // Scan runs
         const leafHdrOffsets = [];
         for (let i = 0; i + 7 < bytes.length; i += 8) {
-            if (bytes[i]===0x41 && bytes[i+1]===0x41 && bytes[i+2]===0x41 && bytes[i+3]===0x41 &&
-                bytes[i+4]===0x0C && bytes[i+5]===0x00 && bytes[i+6]===0x03 && bytes[i+7]===0xE8) {
+            if (bytes[i] === 0x41 && bytes[i + 1] === 0x41 && bytes[i + 2] === 0x41 && bytes[i + 3] === 0x41 &&
+                bytes[i + 4] === 0x0C && bytes[i + 5] === 0x00 && bytes[i + 6] === 0x03 && bytes[i + 7] === 0xE8) {
                 leafHdrOffsets.push(i);
             }
         }
-
-        // 2b. 將連續 header 分組（相鄰 header 間距 8008 = 8 header + 1000×8 data bytes）
         const allRuns = [];
         if (leafHdrOffsets.length > 0) {
-            let curRun2 = [leafHdrOffsets[0]];
+            let cur = [leafHdrOffsets[0]];
             for (let k = 1; k < leafHdrOffsets.length; k++) {
-                if (leafHdrOffsets[k] === leafHdrOffsets[k-1] + 8008) {
-                    curRun2.push(leafHdrOffsets[k]);
-                } else {
-                    allRuns.push([...curRun2]);
-                    curRun2 = [leafHdrOffsets[k]];
-                }
+                if (leafHdrOffsets[k] === leafHdrOffsets[k - 1] + 8008) cur.push(leafHdrOffsets[k]);
+                else { allRuns.push([...cur]); cur = [leafHdrOffsets[k]]; }
             }
-            allRuns.push(curRun2);
+            allRuns.push(cur);
         }
+        const coordRuns = allRuns.filter(r => {
+            const v = view.getFloat64(r[0] + 8, true);
+            return isFinite(v) && Math.abs(v) > 0.001;
+        }).sort((a, b) => a[0] - b[0]);
 
-        // 2c. 過濾座標 run（首值非零、有限、|v| > 0.001），按檔案位置排序
-        const coordRuns = allRuns
-            .filter(r => {
-                const v = view.getFloat64(r[0] + 8, true);
-                return isFinite(v) && Math.abs(v) > 0.001;
-            })
-            .sort((a, b) => a[0] - b[0]);
-
-        if (coordRuns.length < 2) {
-            logDb(`<span style="color:#ef4444">無法找到完整座標資料（需要 lat + lon 兩個 leaf-node run）。</span>`);
-            return;
-        }
-
-        const latRun = coordRuns[0]; // 第一個 run = 緯度 (lat)
-        const lonRun = coordRuns[1]; // 第二個 run = 經度 (lon)
+        if (coordRuns.length < 2) return null;
+        const latRun = coordRuns[0];
+        const lonRun = coordRuns[1];
         const nodeCount = Math.min(latRun.length, lonRun.length);
         const totalPts = nodeCount * 1000;
-
-        // 2d. 讀取全部 lat / lon 值到連續陣列
         const allLats = new Float64Array(totalPts);
         const allLons = new Float64Array(totalPts);
         for (let k = 0; k < nodeCount; k++) {
@@ -1750,288 +1802,109 @@ if (dbDropArea) {
             }
         }
 
-        // 2e. 用 AAAA+0x46 索引結構精確讀取路線邊界與名稱
-        //     0x46 節點是 576 個 uint32 偏移量 → 各指向一個 AAAA+0x05 節點
-        //     0x05 節點 header = AAAA 05 00 cnt_hi cnt_lo；data = cnt 個 uint16 座標索引
-        logDb(`<span style="color:#94a3b8">解析路線索引結構 (0x46)...</span>`);
-        await new Promise(res => setTimeout(res, 5));
-
-        // 找最後一個 cnt == allDbNames.length 的 AAAA+0x46 節點
-        let routeIdxOff46 = -1;
-        for (let i = 0; i + 7 < bytes.length; i += 8) {
-            if (bytes[i]===0x41 && bytes[i+1]===0x41 && bytes[i+2]===0x41 && bytes[i+3]===0x41 &&
-                bytes[i+4] === 0x46) {
-                const nc = (bytes[i+6] << 8) | bytes[i+7];
-                if (nc === allDbNames.length) routeIdxOff46 = i;
-            }
-        }
-
-        let routes = [];
-        if (routeIdxOff46 >= 0) {
-            // ── 精確解析：名稱與座標索引直接一對一 ──
-            for (let ri = 0; ri < allDbNames.length; ri++) {
-                const ptrOff = routeIdxOff46 + 8 + ri * 4;
-                if (ptrOff + 4 > bytes.length) continue;
-                const nodeOff = view.getUint32(ptrOff, true);
-                if (nodeOff + 8 > bytes.length || bytes[nodeOff] !== 0x41) continue;
-                const len = (bytes[nodeOff+6] << 8) | bytes[nodeOff+7];
-                if (len < 3) continue;
-                // 讀所有 uint16 索引，偵測 ring-buffer wrap-around
-                const idxArr = new Int32Array(len);
-                let prevI16 = -1, carry = 0;
-                for (let j = 0; j < len; j++) {
-                    const i16 = bytes[nodeOff+8+j*2] | (bytes[nodeOff+9+j*2] << 8);
-                    if (prevI16 >= 0 && i16 < prevI16) carry += 65536;
-                    idxArr[j] = i16 + carry;
-                    prevI16 = i16;
+        // Parse routes (simple jump detection fallback)
+        const routes = [];
+        let start = 0;
+        for (let i = 1; i < totalPts; i++) {
+            const d = getHaversineDistance(allLats[i - 1], allLons[i - 1], allLats[i], allLons[i]);
+            if (d > 300000) {
+                const len = i - start;
+                if (len > 5) {
+                    const name = allDbNames[routes.length] || `Route_${routes.length + 1}`;
+                    const idxArr = new Int32Array(len);
+                    for (let j = 0; j < len; j++) idxArr[j] = start + j;
+                    routes.push({ name, idxArr, len });
                 }
-                routes.push({ name: allDbNames[ri], idxArr, start: idxArr[0], len });
-            }
-            logDb(`<span style="color:#34d399; font-weight:bold;">✅ 精確索引解析：${routes.length} 條路線直接配對名稱</span>`);
-        } else {
-            // ── Fallback：跳躍偵測法（0.3°）──
-            logDb(`<span style="color:#fbbf24">⚠ 未找到 0x46 索引結構，改用地理跳躍偵測...</span>`);
-            const JUMP_THRESH = 0.3;
-            const routeStarts = [0];
-            for (let i = 1; i < totalPts; i++) {
-                if (Math.abs(allLats[i] - allLats[i-1]) > JUMP_THRESH &&
-                    Math.abs(allLons[i] - allLons[i-1]) > JUMP_THRESH) {
-                    routeStarts.push(i);
-                }
-            }
-            routeStarts.push(totalPts);
-            for (let r = 0; r < routeStarts.length - 1; r++) {
-                const start = routeStarts[r], end = routeStarts[r + 1];
-                if (end - start >= 10) {
-                    const idxArr = new Int32Array(end - start);
-                    for (let j = 0; j < end - start; j++) idxArr[j] = start + j;
-                    const name = allDbNames.length === routeStarts.length - 1 ? allDbNames[r]
-                        : `路線 ${r + 1}`;
-                    routes.push({ name, idxArr, start, len: end - start });
-                }
+                start = i;
             }
         }
-
-        if (routes.length === 0) {
-            logDb(`<span style="color:#ef4444">找不到任何路線資料。</span>`);
-            return;
+        const lastLen = totalPts - start;
+        if (lastLen > 5) {
+            const name = allDbNames[routes.length] || `Route_${routes.length + 1}`;
+            const idxArr = new Int32Array(lastLen);
+            for (let j = 0; j < lastLen; j++) idxArr[j] = start + j;
+            routes.push({ name, idxArr, len: lastLen });
         }
 
-        // ====== 3. 摘要 ======
-        logDb(`<span style="color:#94a3b8">共 ${routes.length} 條路線，總座標點：${routes.reduce((s,r)=>s+r.len,0)}</span>`);
+        return { bytes, workBuf, allDbNames, latRun, lonRun, allLats, allLons, routes };
+    }
 
-        let totalRoutes = routes.length;
-        logDb(`<br>開始優化 <b style="color:#f8fafc">${totalRoutes}</b> 條路線`
-            + ` [${dbStratSelect.options[dbStratSelect.selectedIndex].text}`
-            + ` + ${dbOptSelect.options[dbOptSelect.selectedIndex].text}]...`);
+    async function runTspOnTracks(tracks) {
+        const stratId = dbStratSelect.value;
+        const optId = dbOptSelect.value;
+        const routeTimeoutMs = parseInt(dbTimeoutSelect.value, 10);
+        const results = [];
 
-        // 進度條輔助函式
-        function setProgress(done, label, routeName) {
-            const pct = Math.round((done / totalRoutes) * 100);
-            dbProgressBar.style.width  = pct + '%';
-            dbProgressPct.textContent  = pct + '%';
-            dbProgressLabel.textContent = label;
-            dbProgressRoute.textContent = routeName || '';
-        }
-
-        // ====== 4. 逐條路線優化 ======
-        const tStart = Date.now();
-
-        // 時間格式化輔助
-        function fmtTime(s) {
-            s = Math.round(s);
-            if (s < 60) return `${s}s`;
-            return `${Math.floor(s / 60)}m ${s % 60}s`;
-        }
-
-        // 寫回輔助函式（Worker 與 fallback 共用）
-        function applyTour(r, tour, doneCount, origLen, newLen) {
-            const { name, idxArr, len } = routes[r];
-            const improvement = origLen > 0 ? Math.max(0, (origLen - newLen) / origLen) : 0;
-            const improvPct = (improvement * 100).toFixed(1);
-
-            if (improvement >= improvThreshold) {
-                const lats = new Float64Array(len);
-                const lons = new Float64Array(len);
-                for (let j = 0; j < len; j++) {
-                    lats[j] = allLats[idxArr[j]];
-                    lons[j] = allLons[idxArr[j]];
-                }
-                const newLats = new Float64Array(len);
-                const newLons = new Float64Array(len);
-                for (let j = 0; j < len; j++) {
-                    newLats[j] = lats[tour[j]];
-                    newLons[j] = lons[tour[j]];
-                }
-                for (let j = 0; j < len; j++) {
-                    const gi = idxArr[j];
-                    const leafIdx   = Math.floor(gi / 1000);
-                    const posInLeaf = gi % 1000;
-                    view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, newLats[j], true);
-                    view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, newLons[j], true);
-                }
-                logDb(`- [${name}]：${len} 點，改善 ${improvPct}% <span style="color:#34d399">✓</span>`);
-            } else {
-                const threshPct = (improvThreshold * 100).toFixed(0);
-                logDb(`- [${name}]：${len} 點，改善 ${improvPct}% &lt; ${threshPct}%，<span style="color:#f59e0b">略過</span>`);
-            }
-
-            const elapsedSec = (Date.now() - tStart) / 1000;
-            const remaining = totalRoutes - doneCount;
-            const eta = remaining > 0 && doneCount > 0 ? (elapsedSec / doneCount) * remaining : 0;
-            const etaStr = remaining > 0 ? `剩約 ${fmtTime(eta)}` : '即將完成';
-            setProgress(doneCount,
-                `路線 ${doneCount} / ${totalRoutes}  ·  已用 ${fmtTime(elapsedSec)}  ·  ${etaStr}`,
-                `${name}（${len} 點）`
-            );
-        }
-
-        // Build active route index list (skip large if option enabled)
-        const activeRouteIndices = [];
-        for (let i = 0; i < routes.length; i++) {
-            if (skipLarge && routes[i].len > skipLargeThreshold) {
-                logDb(`- [${routes[i].name}]：${routes[i].len} 點 <span style="color:#f59e0b">略過（超過 ${skipLargeThreshold} 點）</span>`);
-            } else {
-                activeRouteIndices.push(i);
-            }
-        }
-        totalRoutes = activeRouteIndices.length;
-
-        const routeData = activeRouteIndices.map(i => {
-            const { idxArr, len } = routes[i];
-            const pts = [];
-            for (let j = 0; j < len; j++) {
-                pts.push({ lat: allLats[idxArr[j]], lon: allLons[idxArr[j]] });
-            }
-            return pts;
-        });
-
-        // 嘗試用 Web Worker（不阻塞主執行緒，log 即時顯示）
-        let doneCount = 0;
-        try {
-            await new Promise((resolve, reject) => {
-                const dbWorker = new Worker('worker.js');
-                dbCurrentWorker = dbWorker;
-                dbAbortFn = () => {
-                    wasAborted = true;
-                    dbWorker.terminate();
-                    dbCurrentWorker = null;
-                    resolve();
-                };
-                dbWorker.onmessage = (e) => {
+        let done = 0;
+        for (let i = 0; i < tracks.length; i++) {
+            const t = tracks[i];
+            const routeData = t.pts;
+            const res = await new Promise(resolve => {
+                const worker = new Worker('worker.js');
+                worker.onmessage = (e) => {
                     if (e.data.type === 'db-route-done') {
-                        const origIdx = activeRouteIndices[e.data.idx];
-                        applyTour(origIdx, e.data.tour, ++doneCount, e.data.origLen, e.data.newLen);
-                    } else if (e.data.type === 'progress') {
-                        dbProgressLabel.textContent = e.data.message;
-                    } else if (e.data.type === 'db-batch-done') {
-                        dbCurrentWorker = null;
-                        dbAbortFn = null;
-                        dbWorker.terminate();
-                        resolve();
+                        worker.terminate();
+                        const tour = e.data.tour;
+                        const optimizedPts = tour.map(idx => routeData[idx]);
+                        resolve({ name: t.name, pts: optimizedPts });
                     }
                 };
-                dbWorker.onerror = (err) => { dbWorker.terminate(); reject(err); };
-                dbWorker.postMessage({ type: 'db-batch', routes: routeData, stratId, optId, routeTimeoutMs });
+                worker.postMessage({ type: 'db-batch', routes: [routeData], stratId, optId, routeTimeoutMs });
             });
+            results.push(res);
+            done++;
+            dbProgressBar.style.width = (done / tracks.length * 100) + '%';
+            dbProgressPct.textContent = Math.round(done / tracks.length * 100) + '%';
+            dbProgressLabel.textContent = `優化：${res.name}`;
+        }
+        return results;
+    }
 
-        } catch (_) {
-            // Fallback：同步處理（file:// 協議或舊瀏覽器）
-            logDb(`<span style="color:#fbbf24">⚠ Web Worker 不可用，改用同步處理...</span>`);
-            let fbAborted = false;
-            dbAbortFn = () => { wasAborted = true; fbAborted = true; };
-            for (let ri = 0; ri < activeRouteIndices.length; ri++) {
-                if (fbAborted) break;
-                const r = activeRouteIndices[ri];
-                const { idxArr, len } = routes[r];
-                const oldPoints = [...points];
-                points = [];
-                for (let j = 0; j < len; j++) points.push({ lat: allLats[idxArr[j]], lon: allLons[idxArr[j]] });
-                const origTour = points.map((_, i) => i);
-                const origLen = tourLength(origTour);
-                let tour;
-                if (stratId === 'nn') tour = runNearestNeighbor();
-                else if (stratId === 'greedy') tour = runGreedy();
-                else if (stratId === 'insertion') tour = runInsertion();
-                else tour = [...origTour];
-                if (optId === '2opt') tour = run2Opt(tour);
-                else if (optId === 'lk') tour = runLinKernighan(tour);
-                else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
-                else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
-                const newLen = tourLength(tour);
-                points = oldPoints;
-                applyTour(r, tour, ++doneCount, origLen, newLen);
-                if (doneCount % 5 === 0) await new Promise(res => setTimeout(res, 0));
+    function writeTracksToBuffer(bytes, results, latRun, lonRun, capacity) {
+        const workBuf = bytes.buffer.slice(0);
+        const view = new DataView(workBuf);
+        let currentPos = 0;
+
+        for (const res of results) {
+            for (const p of res.pts) {
+                if (currentPos >= capacity) break;
+                const leafIdx = Math.floor(currentPos / 1000);
+                const posInLeaf = currentPos % 1000;
+                view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, p.lat, true);
+                view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, p.lon, true);
+                currentPos++;
             }
         }
+        return workBuf;
+    }
 
-        // 清除中止狀態
-        dbAbortFn = null;
-        dbCurrentWorker = null;
-        dbAbortBtn.style.display = 'none';
+    async function analyzeAndOptimizeDb(file, zipFolder, fileIdx = 1, fileTotal = 1) {
+        const data = await readDbStructure(file);
+        if (!data) return { success: false };
 
-        // 完成進度條
-        const totalSec = ((Date.now() - tStart) / 1000).toFixed(1);
-        if (wasAborted) {
-            setProgress(doneCount, `已中止  ·  完成 ${doneCount} / ${totalRoutes} 條  ·  耗時 ${totalSec}s`, '');
-            logDb(`<br><span style="color:#f87171; font-weight:bold;">⏹ 已中止（完成 ${doneCount} / ${totalRoutes} 條，${totalSec}s）</span>`);
-        } else {
-            setProgress(totalRoutes, `完成！共 ${totalRoutes} 條  ·  耗時 ${totalSec}s`, '');
-            logDb(`<br><span style="color:#34d399; font-weight:bold;">✅ 全部 ${totalRoutes} 條路線優化完成（${totalSec}s）</span>`);
-        }
-        logDb(`準備下載...`);
-        await new Promise(res => setTimeout(res, 30));
+        logDb(`<br><span style="color:#60a5fa">--- 處理: ${file.name} ---</span>`);
+        const tracks = data.routes.map(r => {
+            const pts = [];
+            for (let i = 0; i < r.len; i++) pts.push({ lat: data.allLats[r.idxArr[i]], lon: data.allLons[r.idxArr[i]] });
+            return { name: r.name, pts };
+        });
 
-        // ====== 5. 下載修改後的 workBuf ======
-        const blob = new Blob([workBuf], { type: 'application/octet-stream' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
+        const results = await runTspOnTracks(tracks);
+        const capacity = data.latRun.length * 1000;
+        const workBuf = writeTracksToBuffer(data.bytes, results, data.latRun, data.lonRun, capacity);
+
         const baseName = file.name.replace(/\.db$/i, '');
-        a.download = `${baseName}_${methodSuffix}.db`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        logDb(`<span style="color:#fbbf24">📥 已下載: ${a.download}</span>`);
+        zipFolder.file(`${baseName}_optimized.db`, workBuf);
 
-        // ====== 6. 下載設定與 log 報告 (.txt) ======
-        const timeoutLabel = { '60000': '1 分鐘', '180000': '3 分鐘', '600000': '10 分鐘', '0': '不限時' }[dbTimeoutSelect.value] || dbTimeoutSelect.value;
-        const reportLines = [
-            `=== GPS Joystick DB 優化報告 ===`,
-            `檔案：${file.name}`,
-            `時間：${new Date().toLocaleString('zh-TW')}`,
-            ``,
-            `--- 設定 ---`,
-            `TSP 策略：${dbStratSelect.options[dbStratSelect.selectedIndex].text}`,
-            `後處理：${dbOptSelect.options[dbOptSelect.selectedIndex].text}`,
-            `略過大路線：${skipLarge ? `是（>${skipLargeThreshold} 點）` : '否'}`,
-            `單一路線逾時：${timeoutLabel}`,
-            `最低改善門檻：${(improvThreshold * 100).toFixed(0)}%`,
-            ``,
-            `--- 結果 ---`,
-            wasAborted
-                ? `狀態：已中止（${doneCount} / ${totalRoutes} 條完成）`
-                : `狀態：完成（${totalRoutes} 條）`,
-            `耗時：${totalSec}s`,
-            ``,
-            `--- 詳細 log ---`,
-            dbLogArea.innerText,
-        ];
-        const txtBlob = new Blob([reportLines.join('\n')], { type: 'text/plain;charset=utf-8' });
-        const txtUrl  = URL.createObjectURL(txtBlob);
-        const ta      = document.createElement('a');
-        ta.href       = txtUrl;
-        ta.download   = `${baseName}_${methodSuffix}_report.txt`;
-        document.body.appendChild(ta);
-        ta.click();
-        document.body.removeChild(ta);
-        URL.revokeObjectURL(txtUrl);
-        logDb(`<span style="color:#fbbf24">📄 已下載報告: ${ta.download}</span>`);
-
-        // 恢復拖放區
-        dbDropArea.style.pointerEvents = '';
-        dbDropArea.style.opacity = '';
+        if (dbExportGpx.checked) {
+            const gpxFolder = zipFolder.folder(`${baseName}_gpx`);
+            results.forEach(res => {
+                const gpxContent = generateOptimizedGpxXML(new Array(res.pts.length).fill(0).map((_, i) => i), res.name, res.pts);
+                const safeName = res.name.replace(/[ \/+()]/g, '_').replace(/_+/g, '_');
+                gpxFolder.file(`${safeName}.gpx`, gpxContent);
+            });
+        }
+        return { success: true };
     }
 }
 
