@@ -1579,17 +1579,6 @@ if (dbDropArea) {
         dbLogArea.scrollTop = dbLogArea.scrollHeight;
     }
 
-    dbDropArea.addEventListener('click', () => dbInput.click());
-    dbDropArea.addEventListener('dragover', (e) => { e.preventDefault(); dbDropArea.style.borderColor = '#3b82f6'; });
-    dbDropArea.addEventListener('dragleave', (e) => { dbDropArea.style.borderColor = 'rgba(255,255,255,0.2)'; });
-    dbDropArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dbDropArea.style.borderColor = 'rgba(255,255,255,0.2)';
-        if (e.dataTransfer.files.length) processDbFile(e.dataTransfer.files[0]);
-    });
-    dbInput.addEventListener('change', (e) => {
-        if (e.target.files.length) processDbFile(e.target.files[0]);
-    });
 
     dbThresholdSlider.addEventListener('input', () => {
         dbThresholdVal.textContent = dbThresholdSlider.value;
