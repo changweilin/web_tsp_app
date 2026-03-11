@@ -1974,6 +1974,8 @@ if (dbDropArea) {
 
         let allTracks = [];
         let firstFileResult = null;
+        let maxCapacity = 0;
+        let templateFileName = "";
 
         for (let i = 0; i < files.length; i++) {
             const data = await readDbStructure(files[i]);
@@ -1981,7 +1983,13 @@ if (dbDropArea) {
                 logDb(`<span style="color:#ef4444">⚠ 讀取 ${files[i].name} 失敗，跳過。</span>`);
                 continue;
             }
-            if (!firstFileResult) firstFileResult = data;
+
+            const currentCapacity = data.latRun.length * 1000;
+            if (currentCapacity > maxCapacity) {
+                maxCapacity = currentCapacity;
+                firstFileResult = data;
+                templateFileName = files[i].name;
+            }
 
             for (let j = 0; j < data.routes.length; j++) {
                 const r = data.routes[j];
@@ -2000,29 +2008,53 @@ if (dbDropArea) {
             return;
         }
 
-        logDb(`找到 ${allTracks.length} 條軌跡。開始優化...`);
+        logDb(`<span style="color:#60a5fa">ℹ 已自動選擇容量最大的 <b>${templateFileName}</b> 作為合併模板 (可容納 ${maxCapacity} 點)。</span>`);
+        logDb(`找到 ${allTracks.length} 條軌跡。開始計算容量並準備優化...`);
 
-        // Perform TSP on each track
-        const optimizedResults = await runTspOnTracks(allTracks);
+        // Capacity check before TSP
+        let tracksToOptimize = [];
+        let skippedTracksGroup = [];
+        let accumulatedPts = 0;
 
-        // Merge into a single buffer using the first file as template
-        const capacity = firstFileResult.latRun.length * 1000;
-        const totalPtsToSave = optimizedResults.reduce((sum, res) => sum + res.pts.length, 0);
-
-        if (totalPtsToSave > capacity) {
-            logDb(`<span style="color:#fbbf24">⚠ 警告：總點數 (${totalPtsToSave}) 超過目標檔案容量 (${capacity})，部分軌跡將被截斷。</span>`);
+        for (let i = 0; i < allTracks.length; i++) {
+            const t = allTracks[i];
+            const ptCount = t.pts.length;
+            if (accumulatedPts + ptCount > maxCapacity) {
+                skippedTracksGroup.push(t);
+                logDb(`<span style="color:#fbbf24">⚠ 空間不足，跳過軌跡: ${t.name} (需要 ${ptCount} 點，剩餘 ${maxCapacity - accumulatedPts} 點)</span>`);
+            } else {
+                tracksToOptimize.push(t);
+                accumulatedPts += ptCount;
+            }
         }
 
-        const workBuf = writeTracksToBuffer(firstFileResult.bytes, optimizedResults, firstFileResult.latRun, firstFileResult.lonRun, capacity);
+        // Perform TSP on the filtered valid tracks
+        const optimizedResults = await runTspOnTracks(tracksToOptimize);
+
+        // Merge into a single buffer using the first file as template
+        const workBuf = writeTracksToBuffer(firstFileResult.bytes, optimizedResults, firstFileResult.latRun, firstFileResult.lonRun, maxCapacity);
         zipFolder.file(`merged_optimized.db`, workBuf);
 
         if (dbExportGpx.checked) {
             const gpxFolder = zipFolder.folder(`merged_gpx`);
+            
+            // Export optimized ones
             optimizedResults.forEach(res => {
                 const gpxContent = generateOptimizedGpxXML(new Array(res.pts.length).fill(0).map((_, i) => i), res.name, res.pts);
                 const safeName = res.name.replace(/[ \/+()]/g, '_').replace(/_+/g, '_');
                 gpxFolder.file(`${safeName}.gpx`, gpxContent);
             });
+
+            // If user checked GPX export, they probably still want the GPX for the skipped tracks even if we couldn't fit them in the .db!
+            if (skippedTracksGroup.length > 0) {
+                const skippedFolder = gpxFolder.folder(`skipped_due_to_db_capacity`);
+                skippedTracksGroup.forEach(res => {
+                    const gpxContent = generateOptimizedGpxXML(new Array(res.pts.length).fill(0).map((_, i) => i), res.name, res.pts);
+                    const safeName = res.name.replace(/[ \/+()]/g, '_').replace(/_+/g, '_');
+                    skippedFolder.file(`${safeName}.gpx`, gpxContent);
+                });
+                logDb(`<span style="color:#34d399">ℹ 已將空間不足跳過的 ${skippedTracksGroup.length} 條軌跡匯出為原始 GPX，您可以單獨匯入它們。</span>`);
+            }
         }
 
         logDb(`<br><span style="color:#34d399; font-weight:bold;">✅ 合併優化完成！</span>`);
