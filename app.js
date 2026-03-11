@@ -1822,46 +1822,104 @@ if (dbDropArea) {
         const stratId = dbStratSelect.value;
         const optId = dbOptSelect.value;
         const routeTimeoutMs = parseInt(dbTimeoutSelect.value, 10);
+        const skipLargeThreshold = parseInt(dbSkipLargeThreshold.value, 10) || 256;
+        const isSkipLarge = dbSkipLarge.checked;
+        const impThreshold = parseFloat(dbThresholdSlider.value) || 0;
+        
         const results = [];
 
         let done = 0;
         for (let i = 0; i < tracks.length; i++) {
             const t = tracks[i];
             const routeData = t.pts;
+            const ptCount = routeData.length;
+
+            // 1. Check if we should skip this route due to size
+            if (isSkipLarge && ptCount > skipLargeThreshold) {
+                logDb(`<span style="color:#94a3b8">⏭️ [${i+1}/${tracks.length}] ${t.name} : 跳過 (點數 ${ptCount} > 上限 ${skipLargeThreshold})</span>`);
+                results.push({ name: t.name, pts: routeData });
+                done++;
+                updateProgress(done, tracks.length, t.name);
+                continue;
+            }
+
             const res = await new Promise((resolve, reject) => {
                 const worker = new Worker('worker.js');
                 const timeout = setTimeout(() => {
                     worker.terminate();
-                    resolve({ name: t.name + " (逾時)", pts: routeData });
+                    resolve({ 
+                        name: t.name, 
+                        pts: routeData, 
+                        isTimeout: true, 
+                        pointCount: ptCount,
+                        executionTime: routeTimeoutMs });
                 }, routeTimeoutMs > 0 ? routeTimeoutMs + 5000 : 3600000);
 
                 worker.onmessage = (e) => {
                     if (e.data.type === 'db-route-done') {
                         clearTimeout(timeout);
                         worker.terminate();
-                        const tour = e.data.tour;
-                        const optimizedPts = tour.map(idx => routeData[idx]);
-                        resolve({ name: t.name, pts: optimizedPts });
-                    } else if (e.data.type === 'db-batch-done') {
-                        clearTimeout(timeout);
-                        worker.terminate();
-                        resolve({ name: t.name, pts: routeData });
+                        
+                        const d = e.data;
+                        const tour = d.tour;
+                        const ratioNum = d.origLen > 0 ? ((d.origLen - d.newLen) / d.origLen * 100) : 0;
+                        const ratioStr = ratioNum.toFixed(2);
+                        
+                        let shouldReplace = true;
+                        let reason = "優化成功";
+
+                        if (d.timedOut) {
+                            shouldReplace = false;
+                            reason = "執行逾時 (局部最佳解)";
+                        } else if (ratioNum < impThreshold) {
+                            shouldReplace = false;
+                            reason = `改善比例 ${ratioStr}% 未達門檻 ${impThreshold}%`;
+                        }
+
+                        const finalPts = shouldReplace ? tour.map(idx => routeData[idx]) : routeData;
+                        
+                        // Detailed log
+                        const logMsg = `
+                            <div style="border-left: 2px solid ${shouldReplace ? '#34d399' : '#f87171'}; padding-left: 8px; margin: 4px 0; font-size: 0.8rem;">
+                                <div style="color: #f8fafc; font-weight: bold;">[${i+1}/${tracks.length}] ${t.name}</div>
+                                <div style="color: #94a3b8;">
+                                    點數: ${d.pointCount} | 
+                                    時間: ${formatTime(d.executionTime)} | 
+                                    ${shouldReplace ? "✅ 已替換" : "❌ 未替換"} (${reason})
+                                </div>
+                                <div style="color: #60a5fa;">
+                                    長度: ${d.origLen.toFixed(1)}m ➔ ${d.newLen.toFixed(1)}m 
+                                    (改善: <span style="color: ${ratioNum > 0 ? '#34d399' : '#94a3b8'}">${ratioStr}%</span>)
+                                </div>
+                            </div>
+                        `;
+                        logDb(logMsg);
+
+                        resolve({ name: t.name, pts: finalPts });
                     }
                 };
                 worker.onerror = (err) => {
                     clearTimeout(timeout);
                     worker.terminate();
-                    resolve({ name: t.name + " (錯誤)", pts: routeData });
+                    logDb(`<span style="color:#f87171">❌ [${i+1}/${tracks.length}] ${t.name} : 執行錯誤 (${err.message})</span>`);
+                    resolve({ name: t.name, pts: routeData });
                 };
                 worker.postMessage({ type: 'db-batch', routes: [routeData], stratId, optId, routeTimeoutMs });
             });
+
             results.push(res);
             done++;
-            dbProgressBar.style.width = (done / tracks.length * 100) + '%';
-            dbProgressPct.textContent = Math.round(done / tracks.length * 100) + '%';
-            dbProgressLabel.textContent = `優化：${res.name}`;
+            updateProgress(done, tracks.length, res.name);
         }
         return results;
+    }
+
+    function updateProgress(done, total, currentName) {
+        const pct = Math.round(done / total * 100);
+        dbProgressBar.style.width = pct + '%';
+        dbProgressPct.textContent = pct + '%';
+        dbProgressLabel.textContent = `處理中 (${done}/${total})`;
+        dbProgressRoute.textContent = currentName;
     }
 
     function writeTracksToBuffer(bytes, results, latRun, lonRun, capacity) {

@@ -382,6 +382,7 @@ function handleDbBatch({ routes, stratId, optId, routeTimeoutMs }) {
     const total = routes.length;
     for (let r = 0; r < total; r++) {
         points = routes[r]; // array of {lat, lon}
+        const startTime = Date.now();
 
         // Set per-route deadline
         routeDeadline = routeTimeoutMs > 0 ? Date.now() + routeTimeoutMs : Infinity;
@@ -405,11 +406,29 @@ function handleDbBatch({ routes, stratId, optId, routeTimeoutMs }) {
             tour = origTour.slice(); // fall back to original order
         }
 
+        const endTime = Date.now();
+        const executionTime = endTime - startTime;
+        const timedOut = Date.now() > routeDeadline;
+
         routeDeadline = Infinity; // reset
         let newLen;
-        try { newLen = tourLength(tour, true); } catch(e) { newLen = origLen; tour = origTour.slice(); }
+        try { 
+            newLen = tourLength(tour, true); 
+        } catch(e) { 
+            newLen = origLen; 
+            tour = origTour.slice(); 
+        }
 
-        self.postMessage({ type: 'db-route-done', idx: r, tour, origLen, newLen });
+        self.postMessage({ 
+            type: 'db-route-done', 
+            idx: r, 
+            tour, 
+            origLen, 
+            newLen, 
+            pointCount: points.length,
+            executionTime,
+            timedOut
+        });
     }
     self.postMessage({ type: 'db-batch-done' });
 }
