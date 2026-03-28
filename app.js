@@ -1926,8 +1926,24 @@ if (dbDropArea) {
         const workBuf = bytes.buffer.slice(0);
         const view = new DataView(workBuf);
         let currentPos = 0;
+        let lastLat = 0;
+        let lastLon = 0;
+        let hasWritten = false;
 
-        for (const res of results) {
+        for (let t = 0; t < results.length; t++) {
+            const res = results[t];
+            if (res.pts.length === 0) continue;
+
+            // Insert gap point between tracks (+3° lat ≈ 333km)
+            // GPS Joystick uses 300km discontinuity detection to split routes visually
+            if (hasWritten && currentPos < capacity) {
+                const leafIdx = Math.floor(currentPos / 1000);
+                const posInLeaf = currentPos % 1000;
+                view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, lastLat + 3.0, true);
+                view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, lastLon, true);
+                currentPos++;
+            }
+
             for (const p of res.pts) {
                 if (currentPos >= capacity) break;
                 const leafIdx = Math.floor(currentPos / 1000);
@@ -1935,8 +1951,24 @@ if (dbDropArea) {
                 view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, p.lat, true);
                 view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, p.lon, true);
                 currentPos++;
+                lastLat = p.lat;
+                lastLon = p.lon;
+                hasWritten = true;
             }
         }
+
+        // Pad remaining capacity with last written coordinate
+        // Prevents stale data from the template file being misread as a new route
+        if (hasWritten) {
+            while (currentPos < capacity) {
+                const leafIdx = Math.floor(currentPos / 1000);
+                const posInLeaf = currentPos % 1000;
+                view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, lastLat, true);
+                view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, lastLon, true);
+                currentPos++;
+            }
+        }
+
         return workBuf;
     }
 
@@ -2019,12 +2051,14 @@ if (dbDropArea) {
         for (let i = 0; i < allTracks.length; i++) {
             const t = allTracks[i];
             const ptCount = t.pts.length;
-            if (accumulatedPts + ptCount > maxCapacity) {
+            // +1 slot for the gap point inserted before each track except the first
+            const gapCost = tracksToOptimize.length > 0 ? 1 : 0;
+            if (accumulatedPts + gapCost + ptCount > maxCapacity) {
                 skippedTracksGroup.push(t);
-                logDb(`<span style="color:#fbbf24">⚠ 空間不足，跳過軌跡: ${t.name} (需要 ${ptCount} 點，剩餘 ${maxCapacity - accumulatedPts} 點)</span>`);
+                logDb(`<span style="color:#fbbf24">⚠ 空間不足，跳過軌跡: ${t.name} (需要 ${ptCount + gapCost} 點，剩餘 ${maxCapacity - accumulatedPts} 點)</span>`);
             } else {
                 tracksToOptimize.push(t);
-                accumulatedPts += ptCount;
+                accumulatedPts += gapCost + ptCount;
             }
         }
 
