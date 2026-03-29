@@ -334,10 +334,11 @@ function runGeneticAlgorithm(baseTour) {
         nextPop.push(scored[1].tour);
 
         // Crossover and mutate
+        const evalCount = scored.length; // may be < popSize if deadline cut evaluation short
         while (nextPop.length < popSize) {
-            // Tournament selection
-            let parent1 = scored[Math.floor(Math.pow(Math.random(), 3) * popSize)].tour;
-            let parent2 = scored[Math.floor(Math.pow(Math.random(), 3) * popSize)].tour;
+            // Tournament selection (cap range to evalCount to avoid out-of-bounds)
+            let parent1 = scored[Math.floor(Math.pow(Math.random(), 3) * evalCount)].tour;
+            let parent2 = scored[Math.floor(Math.pow(Math.random(), 3) * evalCount)].tour;
 
             // Order Crossover (OX)
             let start = 1 + Math.floor(Math.random() * (n - 2));
