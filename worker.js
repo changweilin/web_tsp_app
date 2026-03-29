@@ -145,44 +145,45 @@ function runInsertion() {
 }
 
 function run2Opt(initialTour) {
+    let tour = [...initialTour];
     let improved = true;
-    let bestTour = [...initialTour];
-    let bestLen = tourLength(bestTour, true);
-
     let iterations = 0;
-    let maxIterations = points.length * 100;
+    const maxIterations = points.length * 100;
+    const n = points.length;
 
     while (improved && iterations < maxIterations) {
         if (Date.now() > routeDeadline) break;
         improved = false;
         iterations++;
 
-        for (let i = 1; i < bestTour.length - 1; i++) {
+        for (let i = 1; i < n - 1; i++) {
             if (Date.now() > routeDeadline) { improved = false; break; }
-            for (let j = i + 1; j < bestTour.length; j++) {
-                if (j - i === 1) continue;
-
-                let newTour = [
-                    ...bestTour.slice(0, i),
-                    ...bestTour.slice(i, j).reverse(),
-                    ...bestTour.slice(j)
-                ];
-
-                let newLen = tourLength(newTour, true);
-                if (newLen < bestLen - 0.00001) {
-                    bestTour = newTour;
-                    bestLen = newLen;
+            const a = tour[i - 1];
+            let b = tour[i];
+            let dAB = getDistance(points[a], points[b]);
+            for (let j = i + 2; j < n; j++) {
+                const c = tour[j - 1], d = tour[j];
+                const delta = getDistance(points[a], points[c])
+                            + getDistance(points[b], points[d])
+                            - dAB
+                            - getDistance(points[c], points[d]);
+                if (delta < -0.00001) {
+                    // Reverse segment [i..j-1] in-place — no array allocation
+                    let lo = i, hi = j - 1;
+                    while (lo < hi) { [tour[lo], tour[hi]] = [tour[hi], tour[lo]]; lo++; hi--; }
                     improved = true;
+                    b = tour[i];
+                    dAB = getDistance(points[a], points[b]);
                 }
             }
         }
     }
 
-    const startIndex = bestTour.indexOf(0);
+    const startIndex = tour.indexOf(0);
     if (startIndex !== -1 && startIndex !== 0) {
-        bestTour = [...bestTour.slice(startIndex), ...bestTour.slice(0, startIndex)];
+        return [...tour.slice(startIndex), ...tour.slice(0, startIndex)];
     }
-    return bestTour;
+    return tour;
 }
 
 function runLinKernighan(baseTour) {
@@ -251,27 +252,24 @@ function runSimulatedAnnealing(baseTour) {
         if (Date.now() > routeDeadline) break;
         if (iter % 50 === 0) reportProgress("正在運用模擬退火優化 (SA)...", iter / totalExpectedIter);
         for (let i = 0; i < iterationsPerTemp; i++) {
-            // Pick two random edges to 2-opt swap
             let idx1 = 1 + Math.floor(Math.random() * (n - 2));
             let idx2 = 1 + Math.floor(Math.random() * (n - 2));
             if (idx1 === idx2) continue;
             if (idx1 > idx2) [idx1, idx2] = [idx2, idx1];
 
-            // Calculate delta length
-            let newTour = [
-                ...currentTour.slice(0, idx1),
-                ...currentTour.slice(idx1, idx2).reverse(),
-                ...currentTour.slice(idx2)
-            ];
+            // Compute delta via 4-edge formula — no array allocation needed
+            const a = currentTour[idx1 - 1], b = currentTour[idx1];
+            const c = currentTour[idx2 - 1], d = currentTour[idx2];
+            const delta = getDistance(points[a], points[c])
+                        + getDistance(points[b], points[d])
+                        - getDistance(points[a], points[b])
+                        - getDistance(points[c], points[d]);
 
-            let newLen = tourLength(newTour, true);
-            let delta = newLen - currentLen;
-
-            // Acceptance probability
             if (delta < 0 || Math.random() < Math.exp(-delta / temp)) {
-                currentTour = newTour;
-                currentLen = newLen;
-
+                // Reverse segment [idx1..idx2-1] in-place
+                let lo = idx1, hi = idx2 - 1;
+                while (lo < hi) { [currentTour[lo], currentTour[hi]] = [currentTour[hi], currentTour[lo]]; lo++; hi--; }
+                currentLen += delta; // O(1) update instead of full tourLength scan
                 if (currentLen < bestLen) {
                     bestTour = [...currentTour];
                     bestLen = currentLen;
@@ -280,6 +278,8 @@ function runSimulatedAnnealing(baseTour) {
         }
         temp *= coolingRate;
         iter++;
+        // Resync every 200 steps to prevent floating-point drift in cumulative delta
+        if (iter % 200 === 0) currentLen = tourLength(currentTour, true);
     }
 
     return bestTour;
