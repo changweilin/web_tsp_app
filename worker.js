@@ -25,9 +25,30 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-// Distance wrapper
+// Distance wrapper (used outside of matrix context)
 function getDistance(p1, p2) {
     return getHaversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
+}
+
+// Distance matrix (precomputed per points array — O(1) lookup)
+let distMatrix = null;
+let distN = 0;
+
+function buildDistMatrix() {
+    const n = points.length;
+    distN = n;
+    distMatrix = new Float64Array(n * n);
+    for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+            const d = getHaversineDistance(points[i].lat, points[i].lon, points[j].lat, points[j].lon);
+            distMatrix[i * n + j] = d;
+            distMatrix[j * n + i] = d;
+        }
+    }
+}
+
+function getDist(i, j) {
+    return distMatrix[i * distN + j];
 }
 
 // Total route length
@@ -35,7 +56,7 @@ function tourLength(tour, closedLoop = true) {
     let len = 0;
     const endCount = closedLoop ? tour.length : tour.length - 1;
     for (let i = 0; i < endCount; i++) {
-        len += getDistance(points[tour[i]], points[tour[(i + 1) % tour.length]]);
+        len += getDist(tour[i], tour[(i + 1) % tour.length]);
     }
     return len;
 }
@@ -50,7 +71,7 @@ function runNearestNeighbor() {
         let nearest = -1;
         let minDist = Infinity;
         for (let j of unvisited) {
-            let d = getDistance(points[current], points[j]);
+            let d = getDist(current, j);
             if (d < minDist) {
                 minDist = d;
                 nearest = j;
@@ -83,7 +104,7 @@ function runGreedy() {
     let edges = [];
     for (let i = 0; i < n; i++)
         for (let j = i + 1; j < n; j++)
-            edges.push({ i, j, d: getDistance(points[i], points[j]) });
+            edges.push({ i, j, d: getDist(i, j) });
     edges.sort((a, b) => a.d - b.d);
 
     let adj = Array.from({ length: n }, () => []);
@@ -130,7 +151,7 @@ function runInsertion() {
         for (let idx = 0; idx < tour.length - 1; idx++) {
             let i = tour[idx];
             let j = tour[idx + 1];
-            let increase = getDistance(points[i], points[k]) + getDistance(points[k], points[j]) - getDistance(points[i], points[j]);
+            let increase = getDist(i, k) + getDist(k, j) - getDist(i, j);
             if (increase < minIncrease) {
                 minIncrease = increase;
                 bestK = k;
@@ -161,20 +182,20 @@ function run2Opt(initialTour) {
             if (Date.now() > routeDeadline) { improved = false; break; }
             const a = tour[i - 1];
             let b = tour[i];
-            let dAB = getDistance(points[a], points[b]);
+            let dAB = getDist(a, b);
             for (let j = i + 2; j < n; j++) {
                 const c = tour[j - 1], d = tour[j];
-                const delta = getDistance(points[a], points[c])
-                            + getDistance(points[b], points[d])
+                const delta = getDist(a, c)
+                            + getDist(b, d)
                             - dAB
-                            - getDistance(points[c], points[d]);
+                            - getDist(c, d);
                 if (delta < -0.00001) {
                     // Reverse segment [i..j-1] in-place — no array allocation
                     let lo = i, hi = j - 1;
                     while (lo < hi) { [tour[lo], tour[hi]] = [tour[hi], tour[lo]]; lo++; hi--; }
                     improved = true;
                     b = tour[i];
-                    dAB = getDistance(points[a], points[b]);
+                    dAB = getDist(a, b);
                 }
             }
         }
@@ -261,10 +282,10 @@ function runSimulatedAnnealing(baseTour) {
             // Compute delta via 4-edge formula — no array allocation needed
             const a = currentTour[idx1 - 1], b = currentTour[idx1];
             const c = currentTour[idx2 - 1], d = currentTour[idx2];
-            const delta = getDistance(points[a], points[c])
-                        + getDistance(points[b], points[d])
-                        - getDistance(points[a], points[b])
-                        - getDistance(points[c], points[d]);
+            const delta = getDist(a, c)
+                        + getDist(b, d)
+                        - getDist(a, b)
+                        - getDist(c, d);
 
             if (delta < 0 || Math.random() < Math.exp(-delta / temp)) {
                 // Reverse segment [idx1..idx2-1] in-place
@@ -386,6 +407,7 @@ function handleDbBatch({ routes, stratId, optId, routeTimeoutMs }) {
     const total = routes.length;
     for (let r = 0; r < total; r++) {
         points = routes[r]; // array of {lat, lon}
+        buildDistMatrix();
         const startTime = Date.now();
 
         // Set per-route deadline
@@ -444,6 +466,7 @@ self.addEventListener('message', function (e) {
     }
 
     points = e.data.points;
+    buildDistMatrix();
     const config = e.data.config;
 
     try {
