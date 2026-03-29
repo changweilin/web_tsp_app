@@ -34,6 +34,10 @@ function getDistance(p1, p2) {
 let distMatrix = null;
 let distN = 0;
 
+// Candidate neighbor list for 2-opt (k-nearest per city)
+let neighborList = null;
+const NEIGHBOR_K = 10;
+
 function buildDistMatrix() {
     const n = points.length;
     distN = n;
@@ -44,6 +48,19 @@ function buildDistMatrix() {
             distMatrix[i * n + j] = d;
             distMatrix[j * n + i] = d;
         }
+    }
+    // Build neighbor list alongside distance matrix
+    const k = Math.min(NEIGHBOR_K, n - 1);
+    neighborList = new Array(n);
+    for (let i = 0; i < n; i++) {
+        // Collect distances from i to all other cities
+        const row = [];
+        for (let j = 0; j < n; j++) {
+            if (j !== i) row.push({ city: j, d: distMatrix[i * n + j] });
+        }
+        row.sort((a, b) => a.d - b.d);
+        neighborList[i] = new Int32Array(k);
+        for (let ki = 0; ki < k; ki++) neighborList[i][ki] = row[ki].city;
     }
 }
 
@@ -167,11 +184,19 @@ function runInsertion() {
 }
 
 function run2Opt(initialTour) {
+    const n = points.length;
+    if (n < 4) return [...initialTour];
+
+    const k = neighborList ? neighborList[0].length : 0;
     let tour = [...initialTour];
+
+    // pos[city] = current index in tour — enables O(1) city→position lookup
+    const pos = new Int32Array(n);
+    for (let i = 0; i < n; i++) pos[tour[i]] = i;
+
     let improved = true;
     let iterations = 0;
-    const maxIterations = points.length * 100;
-    const n = points.length;
+    const maxIterations = n * 100;
 
     while (improved && iterations < maxIterations) {
         if (Date.now() > routeDeadline) break;
@@ -183,16 +208,25 @@ function run2Opt(initialTour) {
             const a = tour[i - 1];
             let b = tour[i];
             let dAB = getDist(a, b);
-            for (let j = i + 2; j < n; j++) {
-                const c = tour[j - 1], d = tour[j];
-                const delta = getDist(a, c)
-                            + getDist(b, d)
-                            - dAB
-                            - getDist(c, d);
+
+            // OPT2: iterate only over k-nearest neighbors of a
+            for (let ki = 0; ki < k; ki++) {
+                const c = neighborList[a][ki];
+                // Early-exit: neighbors sorted by dist; if getDist(a,c) ≥ dAB no swap can help
+                if (getDist(a, c) >= dAB) break;
+                const j = pos[c] + 1; // want tour[j-1]=c, tour[j]=d
+                if (j <= i + 1 || j >= n) continue; // segment must have length ≥ 2
+                const d = tour[j];
+                const delta = getDist(a, c) + getDist(b, d) - dAB - getDist(c, d);
                 if (delta < -0.00001) {
-                    // Reverse segment [i..j-1] in-place — no array allocation
+                    // Reverse segment [i..j-1] in-place; maintain pos[]
                     let lo = i, hi = j - 1;
-                    while (lo < hi) { [tour[lo], tour[hi]] = [tour[hi], tour[lo]]; lo++; hi--; }
+                    while (lo < hi) {
+                        pos[tour[lo]] = hi; pos[tour[hi]] = lo;
+                        [tour[lo], tour[hi]] = [tour[hi], tour[lo]];
+                        lo++; hi--;
+                    }
+                    if (lo === hi) pos[tour[lo]] = lo;
                     improved = true;
                     b = tour[i];
                     dAB = getDist(a, b);
