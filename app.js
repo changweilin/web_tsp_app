@@ -1984,7 +1984,16 @@ if (dbDropArea) {
         });
 
         const results = await runTspOnTracks(tracks);
+        // capacity = total leaf slots; writeTracksToBuffer uses this as a hard cap.
+        // Gap points (R-1 for R tracks) count against capacity, so real data points
+        // that fit = capacity - (results.length - 1). For typical non-full files this
+        // is not an issue, but log a warning when packing is tight.
         const capacity = data.latRun.length * 1000;
+        const gapSlots = Math.max(0, results.length - 1);
+        const totalDataPts = results.reduce((s, r) => s + r.pts.length, 0);
+        if (totalDataPts + gapSlots > capacity) {
+            logDb(`<span style="color:#fbbf24">⚠ 軌跡總點數 (${totalDataPts}) + 間隔點 (${gapSlots}) 超過容量 (${capacity})，末尾 ${totalDataPts + gapSlots - capacity} 點將被截斷。</span>`);
+        }
         const workBuf = writeTracksToBuffer(data.bytes, results, data.latRun, data.lonRun, capacity);
 
         const baseName = file.name.replace(/\.db$/i, '');
