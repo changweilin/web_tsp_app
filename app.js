@@ -1850,10 +1850,14 @@ if (dbDropArea) {
         const skipLargeThreshold = parseInt(dbSkipLargeThreshold.value, 10) || 256;
         const isSkipLarge = dbSkipLarge.checked;
         const impThreshold = parseFloat(dbThresholdSlider.value) || 0;
-        
-        const results = [];
 
+        const results = [];
         let done = 0;
+
+        // Single persistent Worker — reused across all tracks to avoid repeated
+        // script compilation. Only replaced when a timeout/error forces termination.
+        let worker = new Worker('worker.js');
+
         for (let i = 0; i < tracks.length; i++) {
             const t = tracks[i];
             const routeData = t.pts;
@@ -1868,14 +1872,14 @@ if (dbDropArea) {
                 continue;
             }
 
-            const res = await new Promise((resolve, reject) => {
-                const worker = new Worker('worker.js');
+            const res = await new Promise((resolve) => {
                 const timeout = setTimeout(() => {
                     worker.terminate();
-                    resolve({ 
-                        name: t.name, 
-                        pts: routeData, 
-                        isTimeout: true, 
+                    worker = new Worker('worker.js'); // fresh worker for remaining tracks
+                    resolve({
+                        name: t.name,
+                        pts: routeData,
+                        isTimeout: true,
                         pointCount: ptCount,
                         executionTime: routeTimeoutMs });
                 }, routeTimeoutMs > 0 ? routeTimeoutMs + 5000 : 3600000);
@@ -1883,13 +1887,13 @@ if (dbDropArea) {
                 worker.onmessage = (e) => {
                     if (e.data.type === 'db-route-done') {
                         clearTimeout(timeout);
-                        worker.terminate();
-                        
+                        // Do NOT terminate — reuse worker for next track
+
                         const d = e.data;
                         const tour = d.tour;
                         const ratioNum = d.origLen > 0 ? ((d.origLen - d.newLen) / d.origLen * 100) : 0;
                         const ratioStr = ratioNum.toFixed(2);
-                        
+
                         let shouldReplace = true;
                         let reason = "優化成功";
 
@@ -1902,18 +1906,17 @@ if (dbDropArea) {
                         }
 
                         const finalPts = shouldReplace ? tour.map(idx => routeData[idx]) : routeData;
-                        
-                        // Detailed log
+
                         const logMsg = `
                             <div style="border-left: 2px solid ${shouldReplace ? '#34d399' : '#f87171'}; padding-left: 8px; margin: 4px 0; font-size: 0.8rem;">
                                 <div style="color: #f8fafc; font-weight: bold;">[${i+1}/${tracks.length}] ${t.name}</div>
                                 <div style="color: #94a3b8;">
-                                    點數: ${d.pointCount} | 
-                                    時間: ${formatTime(d.executionTime)} | 
+                                    點數: ${d.pointCount} |
+                                    時間: ${formatTime(d.executionTime)} |
                                     ${shouldReplace ? "✅ 已替換" : "❌ 未替換"} (${reason})
                                 </div>
                                 <div style="color: #60a5fa;">
-                                    長度: ${d.origLen.toFixed(1)}m ➔ ${d.newLen.toFixed(1)}m 
+                                    長度: ${d.origLen.toFixed(1)}m ➔ ${d.newLen.toFixed(1)}m
                                     (改善: <span style="color: ${ratioNum > 0 ? '#34d399' : '#94a3b8'}">${ratioStr}%</span>)
                                 </div>
                             </div>
@@ -1926,6 +1929,7 @@ if (dbDropArea) {
                 worker.onerror = (err) => {
                     clearTimeout(timeout);
                     worker.terminate();
+                    worker = new Worker('worker.js'); // fresh worker for remaining tracks
                     logDb(`<span style="color:#f87171">❌ [${i+1}/${tracks.length}] ${t.name} : 執行錯誤 (${err.message})</span>`);
                     resolve({ name: t.name, pts: routeData });
                 };
@@ -1936,6 +1940,8 @@ if (dbDropArea) {
             done++;
             updateProgress(done, tracks.length, res.name);
         }
+
+        worker.terminate(); // clean up after all tracks are processed
         return results;
     }
 
