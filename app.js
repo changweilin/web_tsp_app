@@ -1776,8 +1776,20 @@ if (dbDropArea) {
         }).sort((a, b) => a[0] - b[0]);
 
         if (coordRuns.length < 2) return null;
-        const latRun = coordRuns[0];
-        const lonRun = coordRuns[1];
+        let latRun = coordRuns[0];
+        let lonRun = coordRuns[1];
+
+        // Validate lat/lon assignment by checking the first finite value of each run.
+        // If run[0] values exceed ±90 but run[1] values fit within ±90, they are swapped.
+        const firstVal0 = view.getFloat64(coordRuns[0][0] + 8, true);
+        const firstVal1 = view.getFloat64(coordRuns[1][0] + 8, true);
+        if (Math.abs(firstVal0) > 90 && Math.abs(firstVal1) <= 90) {
+            latRun = coordRuns[1];
+            lonRun = coordRuns[0];
+            logDb(`<span style="color:#fbbf24">⚠ 偵測到 lat/lon 順序相反，已自動交換。</span>`);
+        } else if (Math.abs(firstVal0) > 90 && Math.abs(firstVal1) > 90) {
+            logDb(`<span style="color:#ef4444">⚠ 兩個座標 run 的首值均超過 ±90°，無法確認 lat/lon，結果可能不正確。</span>`);
+        }
         const nodeCount = Math.min(latRun.length, lonRun.length);
         const totalPts = nodeCount * 1000;
         const allLats = new Float64Array(totalPts);
