@@ -577,6 +577,60 @@ function run2Opt(initialTour) {
     return tour;
 }
 
+// OPT3: Or-opt — relocate segments of 1–3 cities to better positions
+function runOrOpt(initialTour) {
+    const n = points.length;
+    if (n < 5) return [...initialTour];
+
+    const k = neighborList ? neighborList[0].length : 0;
+    let tour = [...initialTour];
+    const pos = new Int32Array(n);
+    for (let i = 0; i < n; i++) pos[tour[i]] = i;
+
+    let improved = true;
+    while (improved) {
+        improved = false;
+
+        outer:
+        for (let segLen = 1; segLen <= 3; segLen++) {
+            for (let i = 1; i <= n - segLen - 1; i++) {
+                const prev    = tour[i - 1];
+                const seg0    = tour[i];
+                const segLast = tour[i + segLen - 1];
+                const after   = tour[i + segLen];
+
+                const removeDelta = getDist(prev, after)
+                                  - getDist(prev, seg0)
+                                  - getDist(segLast, after);
+
+                for (let ki = 0; ki < k; ki++) {
+                    const ins = neighborList[seg0][ki];
+                    const j = pos[ins];
+                    if (j >= i - 1 && j <= i + segLen) continue;
+                    const insNext = tour[j + 1 < n ? j + 1 : 0];
+                    const insertDelta = getDist(ins, seg0) + getDist(segLast, insNext)
+                                      - getDist(ins, insNext);
+
+                    if (removeDelta + insertDelta < -0.00001) {
+                        const seg = tour.splice(i, segLen);
+                        const newJ = j > i ? j - segLen : j;
+                        tour.splice(newJ + 1, 0, ...seg);
+                        for (let x = 0; x < n; x++) pos[tour[x]] = x;
+                        improved = true;
+                        break outer;
+                    }
+                }
+            }
+        }
+    }
+
+    const startIndex = tour.indexOf(0);
+    if (startIndex !== -1 && startIndex !== 0) {
+        return [...tour.slice(startIndex), ...tour.slice(0, startIndex)];
+    }
+    return tour;
+}
+
 function runLinKernighan(baseTour) {
     // Simplified L-K heuristic (Iterated Local Search via Double-Bridge kick + 2-opt)
     // Achieves comparable results to L-K for these sizes while being fast enough for JS.
@@ -968,25 +1022,25 @@ async function calculateTSPFallback(config) {
             }
             if (config.opt2Opt) {
                 await updateProgress(`優化 ${base.name} (2-Opt)...`);
-                const optTour = run2Opt(base.tour);
+                const optTour = runOrOpt(run2Opt(base.tour));
                 results.push({ id: base.id + '_2opt', tour: optTour, len: tourLength(optTour, true), color: base.color, name: base.name + ' + 2-Opt', weight: 4, dash: '10, 8', opacity: 1, offset: 0 });
                 currentStepGlobal++;
             }
             if (config.optLK) {
                 await updateProgress(`深入優化 ${base.name} (L-K)...`);
-                const lkTour = runLinKernighan(base.tour);
+                const lkTour = runOrOpt(runLinKernighan(base.tour));
                 results.push({ id: base.id + '_lk', tour: lkTour, len: tourLength(lkTour, true), color: base.color, name: base.name + ' + L-K', weight: 4, dash: '5, 5', opacity: 1, offset: 0 });
                 currentStepGlobal++;
             }
             if (config.optSA) {
                 await updateProgress(`模擬退火 ${base.name} (SA)...`);
-                const saTour = runSimulatedAnnealing(base.tour);
+                const saTour = runOrOpt(runSimulatedAnnealing(base.tour));
                 results.push({ id: base.id + '_sa', tour: saTour, len: tourLength(saTour, true), color: base.color, name: base.name + ' + SA', weight: 4, dash: '15, 10, 5, 10', opacity: 1, offset: 0 });
                 currentStepGlobal++;
             }
             if (config.optGA) {
                 await updateProgress(`基因演算 ${base.name} (GA)...`);
-                const gaTour = runGeneticAlgorithm(base.tour);
+                const gaTour = runOrOpt(runGeneticAlgorithm(base.tour));
                 results.push({ id: base.id + '_ga', tour: gaTour, len: tourLength(gaTour, true), color: base.color, name: base.name + ' + GA', weight: 4, dash: '15, 5, 5, 5', opacity: 1, offset: 0 });
                 currentStepGlobal++;
             }

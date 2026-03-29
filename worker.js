@@ -242,6 +242,70 @@ function run2Opt(initialTour) {
     return tour;
 }
 
+// OPT3: Or-opt — relocate segments of 1–3 cities to better positions
+function runOrOpt(initialTour) {
+    const n = points.length;
+    if (n < 5) return [...initialTour];
+
+    const k = neighborList ? neighborList[0].length : 0;
+    let tour = [...initialTour];
+    const pos = new Int32Array(n);
+    for (let i = 0; i < n; i++) pos[tour[i]] = i;
+
+    let improved = true;
+    while (improved) {
+        if (Date.now() > routeDeadline) break;
+        improved = false;
+
+        outer:
+        for (let segLen = 1; segLen <= 3; segLen++) {
+            // Non-wrapping: keep index 0 fixed (same as 2-opt convention)
+            for (let i = 1; i <= n - segLen - 1; i++) {
+                if (Date.now() > routeDeadline) { improved = false; break outer; }
+
+                const prev    = tour[i - 1];
+                const seg0    = tour[i];
+                const segLast = tour[i + segLen - 1];
+                const after   = tour[i + segLen];
+
+                // Delta from removing the segment: bridge prev→after directly
+                const removeDelta = getDist(prev, after)
+                                  - getDist(prev, seg0)
+                                  - getDist(segLast, after);
+
+                // Try inserting seg after each k-nearest neighbor of seg0
+                for (let ki = 0; ki < k; ki++) {
+                    const ins = neighborList[seg0][ki];
+                    const j = pos[ins];
+
+                    // Skip if insertion point overlaps the removed segment's neighbourhood
+                    if (j >= i - 1 && j <= i + segLen) continue;
+
+                    const insNext = tour[j + 1 < n ? j + 1 : 0];
+                    const insertDelta = getDist(ins, seg0) + getDist(segLast, insNext)
+                                      - getDist(ins, insNext);
+
+                    if (removeDelta + insertDelta < -0.00001) {
+                        // Apply: splice segment out, reinsert after ins
+                        const seg = tour.splice(i, segLen);
+                        const newJ = j > i ? j - segLen : j; // adjust index after splice
+                        tour.splice(newJ + 1, 0, ...seg);
+                        for (let x = 0; x < n; x++) pos[tour[x]] = x;
+                        improved = true;
+                        break outer;
+                    }
+                }
+            }
+        }
+    }
+
+    const startIndex = tour.indexOf(0);
+    if (startIndex !== -1 && startIndex !== 0) {
+        return [...tour.slice(startIndex), ...tour.slice(0, startIndex)];
+    }
+    return tour;
+}
+
 function runLinKernighan(baseTour) {
     let n = points.length;
     if (n < 4) return run2Opt(points.map((_, i) => i));
@@ -462,6 +526,8 @@ function handleDbBatch({ routes, stratId, optId, routeTimeoutMs }) {
             else if (optId === 'lk') tour = runLinKernighan(tour);
             else if (optId === 'sa') tour = runSimulatedAnnealing(tour);
             else if (optId === 'ga') tour = runGeneticAlgorithm(tour);
+            // OPT3: Or-opt as universal post-processing step
+            if (optId !== 'none' && Date.now() < routeDeadline) tour = runOrOpt(tour);
         } catch(e) {
             tour = origTour.slice(); // fall back to original order
         }
@@ -564,7 +630,7 @@ self.addEventListener('message', function (e) {
 
             if (config.opt2Opt) {
                 reportProgress(`正在優化 ${base.name} (2-Opt)...`);
-                const optTour = run2Opt(base.tour);
+                const optTour = runOrOpt(run2Opt(base.tour));
                 results.push({
                     id: base.id + '_2opt',
                     tour: optTour,
@@ -581,7 +647,7 @@ self.addEventListener('message', function (e) {
 
             if (config.optLK) {
                 reportProgress(`正在更深入優化 ${base.name} (L-K)...`);
-                const lkTour = runLinKernighan(base.tour);
+                const lkTour = runOrOpt(runLinKernighan(base.tour));
                 results.push({
                     id: base.id + '_lk',
                     tour: lkTour,
@@ -598,7 +664,7 @@ self.addEventListener('message', function (e) {
 
             if (config.optSA) {
                 reportProgress(`正在運用模擬退火優化 ${base.name} (SA)...`);
-                const saTour = runSimulatedAnnealing(base.tour);
+                const saTour = runOrOpt(runSimulatedAnnealing(base.tour));
                 results.push({
                     id: base.id + '_sa',
                     tour: saTour,
@@ -615,7 +681,7 @@ self.addEventListener('message', function (e) {
 
             if (config.optGA) {
                 reportProgress(`正在運用基因演算法優化 ${base.name} (GA)...`);
-                const gaTour = runGeneticAlgorithm(base.tour);
+                const gaTour = runOrOpt(runGeneticAlgorithm(base.tour));
                 results.push({
                     id: base.id + '_ga',
                     tour: gaTour,
