@@ -1556,6 +1556,7 @@ const dbProgressPct = document.getElementById('dbProgressPct');
 const dbProgressRoute = document.getElementById('dbProgressRoute');
 const dbSkipLarge = document.getElementById('dbSkipLarge');
 const dbSkipLargeThreshold = document.getElementById('dbSkipLargeThreshold');
+const dbGapThreshold = document.getElementById('dbGapThreshold');
 const dbTimeoutSelect = document.getElementById('dbTimeoutSelect');
 const dbThresholdSlider = document.getElementById('dbThresholdSlider');
 const dbThresholdVal = document.getElementById('dbThresholdVal');
@@ -1593,6 +1594,7 @@ if (dbDropArea) {
             opt: dbOptSelect.value,
             skipLarge: dbSkipLarge.checked,
             skipLargeThreshold: dbSkipLargeThreshold.value,
+            gapThreshold: dbGapThreshold.value,
             timeout: dbTimeoutSelect.value,
             threshold: dbThresholdSlider.value,
             mergeTracks: dbMergeTracks.checked,
@@ -1609,6 +1611,7 @@ if (dbDropArea) {
             if (s.opt !== undefined) dbOptSelect.value = s.opt;
             if (s.skipLarge !== undefined) dbSkipLarge.checked = s.skipLarge;
             if (s.skipLargeThreshold !== undefined) dbSkipLargeThreshold.value = s.skipLargeThreshold;
+            if (s.gapThreshold !== undefined) dbGapThreshold.value = s.gapThreshold;
             if (s.timeout !== undefined) dbTimeoutSelect.value = s.timeout;
             if (s.threshold !== undefined) {
                 dbThresholdSlider.value = s.threshold;
@@ -1623,6 +1626,7 @@ if (dbDropArea) {
     dbOptSelect.addEventListener('change', saveDbSettings);
     dbSkipLarge.addEventListener('change', saveDbSettings);
     dbSkipLargeThreshold.addEventListener('change', saveDbSettings);
+    dbGapThreshold.addEventListener('change', saveDbSettings);
     dbTimeoutSelect.addEventListener('change', saveDbSettings);
     dbMergeTracks.addEventListener('change', saveDbSettings);
     dbExportGpx.addEventListener('change', saveDbSettings);
@@ -1804,13 +1808,14 @@ if (dbDropArea) {
             }
         }
 
-        // Parse routes (simple jump detection fallback)
+        // Parse routes (jump detection: configurable gap threshold)
+        const gapThresholdM = (parseFloat(dbGapThreshold?.value) || 300) * 1000;
         const routes = [];
         let start = 0;
         for (let i = 1; i < totalPts; i++) {
             if (i % 10000 === 0) await new Promise(res => setTimeout(res, 0));
             const d = getHaversineDistance(allLats[i - 1], allLons[i - 1], allLats[i], allLons[i]);
-            if (d > 300000) {
+            if (d > gapThresholdM) {
                 const len = i - start;
                 if (len > 5) {
                     const name = allDbNames[routes.length] || `Route_${routes.length + 1}`;

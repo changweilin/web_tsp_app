@@ -883,7 +883,14 @@
                                 </label>
                             </div>
 
-                            <!-- Option 2: Per-route timeout -->
+                            <!-- Option 2: Gap threshold for route segmentation -->
+                            <div>
+                                <label style="display:block;font-size:0.85rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">路線分段距離門檻 (km)</label>
+                                <input type="number" id="dbGapThreshold" value="300" min="10" max="10000"
+                                    style="width:100%;padding:4px 8px;background:rgba(15,23,42,0.8);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:#f8fafc;text-align:center;">
+                            </div>
+
+                            <!-- Option 3: Per-route timeout -->
                             <div>
                                 <label
                                     style="display:block;font-size:0.85rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">單一路線逾時上限</label>
