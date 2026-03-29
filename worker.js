@@ -346,22 +346,22 @@ function runGeneticAlgorithm(baseTour) {
             if (start > end) [start, end] = [end, start];
             if (start === end) end = Math.min(end + 1, n - 1); // ensure non-empty segment
 
+            // Build placed-gene Set upfront for O(1) membership checks
+            const placed = new Set([parent1[0], parent1[n - 1]]);
+            for (let i = start; i < end; i++) placed.add(parent1[i]);
+
             let child = new Array(n).fill(-1);
             child[0] = parent1[0];
             child[n - 1] = parent1[n - 1];
-
-            for (let i = start; i < end; i++) {
-                child[i] = parent1[i];
-            }
+            for (let i = start; i < end; i++) child[i] = parent1[i];
 
             let p2Idx = 1;
             for (let i = 1; i < n - 1; i++) {
                 if (child[i] === -1) {
-                    while (p2Idx < n - 1 && child.includes(parent2[p2Idx])) {
-                        p2Idx++;
-                    }
-                    // fallback to parent1 slot if p2 is exhausted
-                    child[i] = p2Idx < n - 1 ? parent2[p2Idx] : parent1[i];
+                    while (p2Idx < n - 1 && placed.has(parent2[p2Idx])) p2Idx++;
+                    const gene = p2Idx < n - 1 ? parent2[p2Idx] : parent1[i];
+                    child[i] = gene;
+                    placed.add(gene);
                 }
             }
 
