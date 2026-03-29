@@ -1953,12 +1953,15 @@ if (dbDropArea) {
             const res = results[t];
             if (res.pts.length === 0) continue;
 
-            // Insert gap point between tracks (+3° lat ≈ 333km)
-            // GPS Joystick uses 300km discontinuity detection to split routes visually
+            // Insert gap point between tracks (3° lat ≈ 333km > 300km threshold)
+            // Move away from equator so the sentinel always stays within ±90°:
+            //   lastLat >= 0 → subtract 3° (e.g. 89° → 86°, never exceeds 90°)
+            //   lastLat <  0 → add    3° (e.g. -89° → -86°, never below -90°)
             if (hasWritten && currentPos < capacity) {
+                const sentinelLat = lastLat >= 0 ? lastLat - 3.0 : lastLat + 3.0;
                 const leafIdx = Math.floor(currentPos / 1000);
                 const posInLeaf = currentPos % 1000;
-                view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, lastLat + 3.0, true);
+                view.setFloat64(latRun[leafIdx] + 8 + posInLeaf * 8, sentinelLat, true);
                 view.setFloat64(lonRun[leafIdx] + 8 + posInLeaf * 8, lastLon, true);
                 currentPos++;
             }
