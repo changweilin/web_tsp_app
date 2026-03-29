@@ -2160,8 +2160,12 @@ if (dbDropArea) {
         let maxCapacity = 0;
         let templateFileName = "";
 
+        // OPT4: load all files in parallel
+        dbProgressLabel.textContent = `並行載入 ${files.length} 個檔案...`;
+        const loadResults = await Promise.all(files.map(f => readDbStructure(f)));
+
         for (let i = 0; i < files.length; i++) {
-            const data = await readDbStructure(files[i]);
+            const data = loadResults[i];
             if (!data) {
                 logDb(`<span style="color:#ef4444">⚠ 讀取 ${files[i].name} 失敗，跳過。</span>`);
                 continue;
@@ -2182,7 +2186,7 @@ if (dbDropArea) {
                 allTracks.push({ name: `${files[i].name.replace(/\.db$/i, '')}_${r.name}`, pts });
             }
 
-            dbProgressLabel.textContent = `載入中：${files[i].name} (${i + 1}/${files.length})`;
+            dbProgressLabel.textContent = `處理中：${files[i].name} (${i + 1}/${files.length})`;
             dbProgressBar.style.width = ((i + 1) / files.length * 20) + '%';
         }
 
