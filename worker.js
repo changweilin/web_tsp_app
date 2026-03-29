@@ -115,6 +115,7 @@ function runGreedy() {
 
 function runInsertion() {
     const n = points.length;
+    if (n < 3) return points.map((_, i) => i); // degenerate: 0, 1, or 2 points
     let tour = [0, 1, 0];
     let unvisited = new Set();
     for (let i = 2; i < n; ++i) unvisited.add(i);

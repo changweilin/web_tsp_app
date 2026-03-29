@@ -453,6 +453,7 @@ function runGreedy() {
 
 function runInsertion() {
     const n = points.length;
+    if (n < 3) return points.map((_, i) => i); // degenerate: 0, 1, or 2 points
     let tour = [0, 1, 0];
     let unvisited = new Set();
     for (let i = 2; i < n; ++i) unvisited.add(i);
@@ -1745,9 +1746,8 @@ if (dbDropArea) {
 
     async function readDbStructure(file) {
         const buffer = await file.arrayBuffer();
-        const workBuf = buffer.slice(0);
         const bytes = new Uint8Array(buffer);
-        const view = new DataView(workBuf);
+        const view = new DataView(buffer); // use buffer directly — no redundant copy needed
 
         // Scan names
         const decoder = new TextDecoder('utf-8');
@@ -1759,7 +1759,10 @@ if (dbDropArea) {
                 if (len >= 2 && i + 8 + len <= bytes.length) {
                     try {
                         const name = decoder.decode(bytes.subarray(i + 8, i + 8 + len)).replace(/\0/g, '').trim();
-                        if (name.length >= 2 && !name.startsWith('http')) allDbNames.push(name);
+                        // Filter out binary noise: require printable ASCII/Unicode, reject URLs and control chars
+                        if (name.length >= 2 && name.length <= 64 &&
+                            !name.startsWith('http') &&
+                            !/[\x00-\x1F\x7F]/.test(name)) allDbNames.push(name);
                     } catch (e) { }
                 }
             }
@@ -1825,9 +1828,7 @@ if (dbDropArea) {
                 const len = i - start;
                 if (len > 5) {
                     const name = allDbNames[routes.length] || `Route_${routes.length + 1}`;
-                    const idxArr = new Int32Array(len);
-                    for (let j = 0; j < len; j++) idxArr[j] = start + j;
-                    routes.push({ name, idxArr, len });
+                    routes.push({ name, start, len }); // L5: store range {start,len} instead of idxArr
                 }
                 start = i;
             }
@@ -1835,12 +1836,10 @@ if (dbDropArea) {
         const lastLen = totalPts - start;
         if (lastLen > 5) {
             const name = allDbNames[routes.length] || `Route_${routes.length + 1}`;
-            const idxArr = new Int32Array(lastLen);
-            for (let j = 0; j < lastLen; j++) idxArr[j] = start + j;
-            routes.push({ name, idxArr, len: lastLen });
+            routes.push({ name, start, len: lastLen });
         }
 
-        return { bytes, workBuf, allDbNames, latRun, lonRun, allLats, allLons, routes };
+        return { bytes, allDbNames, latRun, lonRun, allLats, allLons, routes };
     }
 
     async function runTspOnTracks(tracks) {
@@ -2013,7 +2012,7 @@ if (dbDropArea) {
         logDb(`<br><span style="color:#60a5fa">--- 處理: ${file.name} ---</span>`);
         const tracks = data.routes.map(r => {
             const pts = [];
-            for (let i = 0; i < r.len; i++) pts.push({ lat: data.allLats[r.idxArr[i]], lon: data.allLons[r.idxArr[i]] });
+            for (let i = 0; i < r.len; i++) pts.push({ lat: data.allLats[r.start + i], lon: data.allLons[r.start + i] });
             return { name: r.name, pts };
         });
 
@@ -2070,7 +2069,7 @@ if (dbDropArea) {
                 const r = data.routes[j];
                 if (j % 5 === 0) await new Promise(res => setTimeout(res, 0));
                 const pts = [];
-                for (let k = 0; k < r.len; k++) pts.push({ lat: data.allLats[r.idxArr[k]], lon: data.allLons[r.idxArr[k]] });
+                for (let k = 0; k < r.len; k++) pts.push({ lat: data.allLats[r.start + k], lon: data.allLons[r.start + k] });
                 allTracks.push({ name: `${files[i].name.replace(/\.db$/i, '')}_${r.name}`, pts });
             }
 
