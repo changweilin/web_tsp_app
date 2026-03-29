@@ -64,37 +64,38 @@ function runNearestNeighbor() {
 }
 
 function runGreedy() {
-    let edges = [];
     const n = points.length;
-    for (let i = 0; i < n; i++) {
-        for (let j = i + 1; j < n; j++) {
-            edges.push({ i, j, d: getDistance(points[i], points[j]) });
-        }
+
+    // Union-Find with path-halving and union-by-rank: O(α(n)) per operation
+    const parent = Array.from({ length: n }, (_, i) => i);
+    const rank = new Array(n).fill(0);
+    function find(x) {
+        while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; }
+        return x;
     }
+    function union(x, y) {
+        const px = find(x), py = find(y);
+        if (rank[px] < rank[py]) parent[px] = py;
+        else if (rank[px] > rank[py]) parent[py] = px;
+        else { parent[py] = px; rank[px]++; }
+    }
+
+    let edges = [];
+    for (let i = 0; i < n; i++)
+        for (let j = i + 1; j < n; j++)
+            edges.push({ i, j, d: getDistance(points[i], points[j]) });
     edges.sort((a, b) => a.d - b.d);
 
     let adj = Array.from({ length: n }, () => []);
     let edgeCount = 0;
 
-    function createsCycle(u, v) {
-        let visited = new Set();
-        let stack = [u];
-        while (stack.length > 0) {
-            let curr = stack.pop();
-            if (curr === v) return true;
-            visited.add(curr);
-            for (let neighbor of adj[curr]) {
-                if (!visited.has(neighbor)) stack.push(neighbor);
-            }
-        }
-        return false;
-    }
-
     for (let e of edges) {
         if (adj[e.i].length < 2 && adj[e.j].length < 2) {
-            if (edgeCount === n - 1 || !createsCycle(e.i, e.j)) {
+            // Allow last edge (closes the cycle); otherwise reject if same component
+            if (edgeCount === n - 1 || find(e.i) !== find(e.j)) {
                 adj[e.i].push(e.j);
                 adj[e.j].push(e.i);
+                if (edgeCount < n - 1) union(e.i, e.j); // don't union on closing edge
                 edgeCount++;
                 if (edgeCount === n) break;
             }
@@ -102,13 +103,12 @@ function runGreedy() {
     }
 
     let tour = [0];
-    let curr = 0;
-    let prev = -1;
+    let curr = 0, prev = -1;
     while (tour.length < n) {
         let next = adj[curr][0] === prev ? adj[curr][1] : adj[curr][0];
+        if (next === undefined) break; // L1: guard against degree-1 endpoint
         tour.push(next);
-        prev = curr;
-        curr = next;
+        prev = curr; curr = next;
     }
     return tour;
 }
