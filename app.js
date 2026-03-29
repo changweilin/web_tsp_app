@@ -658,6 +658,7 @@ function runGeneticAlgorithm(baseTour) {
             let start = 1 + Math.floor(Math.random() * (n - 2));
             let end = 1 + Math.floor(Math.random() * (n - 2));
             if (start > end) [start, end] = [end, start];
+            if (start === end) end = Math.min(end + 1, n - 1); // ensure non-empty segment
 
             let child = new Array(n).fill(-1);
             child[0] = parent1[0];
@@ -670,10 +671,11 @@ function runGeneticAlgorithm(baseTour) {
             let p2Idx = 1;
             for (let i = 1; i < n - 1; i++) {
                 if (child[i] === -1) {
-                    while (child.includes(parent2[p2Idx])) {
+                    while (p2Idx < n - 1 && child.includes(parent2[p2Idx])) {
                         p2Idx++;
                     }
-                    child[i] = parent2[p2Idx];
+                    // fallback to parent1 slot if p2 is exhausted
+                    child[i] = p2Idx < n - 1 ? parent2[p2Idx] : parent1[i];
                 }
             }
 
