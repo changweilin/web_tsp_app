@@ -5,6 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>智慧路線規劃 | 最佳化您的路程</title>
+    <script>
+        (() => {
+            try {
+                const savedTheme = localStorage.getItem('tsp_ui_theme');
+                const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+                document.documentElement.dataset.theme = savedTheme || (prefersLight ? 'light' : 'dark');
+            } catch (error) {
+                document.documentElement.dataset.theme = 'dark';
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="index.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -23,6 +34,19 @@
         </header>
 
         <nav class="tabs glass-panel">
+            <button id="themeToggle" class="theme-toggle" type="button" aria-label="切換白天/晚上模式" title="切換白天/晚上模式">
+                <span class="theme-toggle-track" aria-hidden="true">
+                    <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>
+                    </svg>
+                    <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M20 14.1A7.4 7.4 0 0 1 9.9 4a8 8 0 1 0 10.1 10.1Z"></path>
+                    </svg>
+                    <span class="theme-toggle-thumb"></span>
+                </span>
+                <span class="theme-toggle-text">晚上</span>
+            </button>
             <button class="tab-btn active" data-target="page-planner">📍 路線規劃器</button>
             <button class="tab-btn" data-target="page-tutorial">📚 演算法教學</button>
             <button class="tab-btn" data-target="page-db">🗄️ 資料庫優化</button>
@@ -986,15 +1010,18 @@
                     <nav class="about-me-links" aria-label="Chang Wei Lin links">
                         <a href="https://github.com/changweilin" target="_blank" rel="noopener noreferrer"
                             aria-label="GitHub" title="GitHub">
-                            <span aria-hidden="true">GH</span>
+                            <img src="https://www.google.com/s2/favicons?sz=64&amp;domain_url=https://github.com/changweilin"
+                                alt="" width="24" height="24" loading="lazy" decoding="async" referrerpolicy="no-referrer">
                         </a>
                         <a href="https://www.linkedin.com/in/wei-lin-chang-ba38049a/" target="_blank"
                             rel="noopener noreferrer" aria-label="LinkedIn" title="LinkedIn">
-                            <span aria-hidden="true">in</span>
+                            <img src="https://www.google.com/s2/favicons?sz=64&amp;domain_url=https://www.linkedin.com/in/wei-lin-chang-ba38049a/"
+                                alt="" width="24" height="24" loading="lazy" decoding="async" referrerpolicy="no-referrer">
                         </a>
                         <a href="https://changweilin.github.io/demo_link/" target="_blank" rel="noopener noreferrer"
                             aria-label="Demo Link" title="Demo Link">
-                            <span aria-hidden="true">↗</span>
+                            <img src="https://www.google.com/s2/favicons?sz=64&amp;domain_url=https://changweilin.github.io/demo_link/"
+                                alt="" width="24" height="24" loading="lazy" decoding="async" referrerpolicy="no-referrer">
                         </a>
                     </nav>
                 </section>

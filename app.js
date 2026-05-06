@@ -16,8 +16,10 @@ const toastEl = document.getElementById('toast');
 const gpxInput = document.getElementById('gpxInput');
 const btnLoadGpx = document.getElementById('btnLoadGpx');
 const btnLocation = document.getElementById('btnLocation');
+const themeToggle = document.getElementById('themeToggle');
 
 // State
+const THEME_STORAGE_KEY = 'tsp_ui_theme';
 let points = []; // stores {lat, lon, marker, element?}
 let optimizedRoute = []; // stores indices for primary export strategy (2-opt if avail, else first)
 let isCalculating = false;
@@ -25,6 +27,55 @@ let origGpxDoc = null; // Store the original XML Document if loaded from GPX
 let userLocationMarker = null;
 let currentCalculatedRoutes = []; // Stores all generated strategy results
 let origFileName = "route"; // Default filename base
+
+function getStoredTheme() {
+    try {
+        const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+        return savedTheme === 'light' || savedTheme === 'dark' ? savedTheme : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function getPreferredTheme() {
+    const currentTheme = document.documentElement.dataset.theme;
+    if (currentTheme === 'light' || currentTheme === 'dark') return currentTheme;
+    const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
+    return prefersLight ? 'light' : 'dark';
+}
+
+function applyTheme(theme, shouldPersist = false) {
+    const nextTheme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = nextTheme;
+
+    if (themeToggle) {
+        const isLight = nextTheme === 'light';
+        themeToggle.setAttribute('aria-pressed', String(isLight));
+        themeToggle.setAttribute('aria-label', isLight ? '切換為晚上模式' : '切換為白天模式');
+        themeToggle.title = isLight ? '切換為晚上模式' : '切換為白天模式';
+        const label = themeToggle.querySelector('.theme-toggle-text');
+        if (label) label.textContent = isLight ? '白天' : '晚上';
+    }
+
+    if (shouldPersist) {
+        try {
+            localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+        } catch (error) {
+            // Ignore storage failures; the UI can still switch for this session.
+        }
+    }
+}
+
+function initThemeToggle() {
+    applyTheme(getStoredTheme() || getPreferredTheme());
+
+    themeToggle?.addEventListener('click', () => {
+        const currentTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+        applyTheme(currentTheme === 'light' ? 'dark' : 'light', true);
+    });
+}
+
+initThemeToggle();
 
 // Map layers
 let initialPolyline = null;
