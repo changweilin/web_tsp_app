@@ -836,7 +836,7 @@
 
         <!-- Page 3: DB Optimizer -->
         <div id="page-db" class="page">
-            <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column; gap: 20px;">
+            <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column; gap: 20px; min-height: 0; overflow-y: auto;">
                 <h2 style="color: #34d399; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">Realm
                     資料庫批量優化</h2>
                 <p style="color: var(--text-muted);">上傳您的 <code>gpsjoystick_*.db</code> 檔案，我們將自動分析並修改內部路徑的座標順序，並產生新的 DB
@@ -974,6 +974,30 @@
                     style="flex: 1; background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.85rem; color: #a78bfa; overflow-y: auto; padding: 15px; margin-top: 10px; max-height: 300px;">
                     等待匯入檔案...
                 </div>
+
+                <section class="about-me" aria-labelledby="aboutMeTitle">
+                    <div class="about-me-copy">
+                        <p class="about-me-label">About Me</p>
+                        <h3 id="aboutMeTitle">Chang Wei Lin</h3>
+                        <p class="about-me-quote zh">我愛星空至深，無懼黑夜。</p>
+                        <p class="about-me-quote">We have loved the stars too fondly to fear the dark.</p>
+                        <p class="about-me-credit">— &lt;The Old Astronomer&gt; Sarah Williams</p>
+                    </div>
+                    <nav class="about-me-links" aria-label="Chang Wei Lin links">
+                        <a href="https://github.com/changweilin" target="_blank" rel="noopener noreferrer"
+                            aria-label="GitHub" title="GitHub">
+                            <span aria-hidden="true">GH</span>
+                        </a>
+                        <a href="https://www.linkedin.com/in/wei-lin-chang-ba38049a/" target="_blank"
+                            rel="noopener noreferrer" aria-label="LinkedIn" title="LinkedIn">
+                            <span aria-hidden="true">in</span>
+                        </a>
+                        <a href="https://changweilin.github.io/demo_link/" target="_blank" rel="noopener noreferrer"
+                            aria-label="Demo Link" title="Demo Link">
+                            <span aria-hidden="true">↗</span>
+                        </a>
+                    </nav>
+                </section>
             </div>
         </div>
 

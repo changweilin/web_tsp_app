@@ -315,6 +315,86 @@ footer.controls {
     transform: scale(0.95);
 }
 
+.about-me {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: 4px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.about-me-copy {
+    min-width: 0;
+}
+
+.about-me-label {
+    margin-bottom: 4px;
+    color: #34d399;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.about-me h3 {
+    margin-bottom: 8px;
+    color: var(--text-main);
+    font-size: 1.25rem;
+    line-height: 1.2;
+}
+
+.about-me-quote {
+    color: #dbeafe;
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+
+.about-me-quote.zh {
+    color: #f8fafc;
+    font-weight: 650;
+}
+
+.about-me-credit {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+.about-me-links {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.about-me-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.58);
+    color: #f8fafc;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.about-me-links a:hover,
+.about-me-links a:focus-visible {
+    border-color: rgba(52, 211, 153, 0.8);
+    background: rgba(52, 211, 153, 0.14);
+    color: #86efac;
+    outline: none;
+    transform: translateY(-2px);
+}
+
 @keyframes pulse {
     0% {
         box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
@@ -471,6 +551,11 @@ footer.controls {
     /* DB page: stack vertically */
     .db-row { flex-direction: column !important; }
     #dbDropArea { min-height: 130px !important; }
+    .about-me {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 14px;
+    }
 
     /* Buttons */
     .btn { padding: 12px 18px; font-size: 0.9rem; }
