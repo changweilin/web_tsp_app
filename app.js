@@ -82,13 +82,75 @@ let initialPolyline = null;
 let strategyPolylines = {}; // Key: strat ID, Value: L.polyline
 let pointGroup = L.layerGroup();
 
-// Initialize Leaflet Map (Centered on Taiwan by default)
-const map = L.map('map', { doubleClickZoom: false }).setView([23.6978, 120.9605], 7);
+const mapBaseLayers = {
+    street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+    }),
+    terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17,
+        attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM | Map style: &copy; OpenTopoMap'
+    }),
+    satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+    })
+};
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap'
-}).addTo(map);
+const mapBaseLayerLabels = {
+    street: '街道',
+    terrain: '地形',
+    satellite: '衛星'
+};
+
+let activeBaseLayerKey = 'street';
+
+// Initialize Leaflet Map (Centered on Taiwan by default)
+const map = L.map('map', {
+    doubleClickZoom: false,
+    layers: [mapBaseLayers.street]
+}).setView([23.6978, 120.9605], 7);
+
+function setBaseLayer(layerKey) {
+    const nextLayer = mapBaseLayers[layerKey];
+    if (!nextLayer || layerKey === activeBaseLayerKey) return;
+
+    map.removeLayer(mapBaseLayers[activeBaseLayerKey]);
+    nextLayer.addTo(map);
+    activeBaseLayerKey = layerKey;
+
+    document.querySelectorAll('.map-layer-control button').forEach(button => {
+        const isActive = button.dataset.layer === layerKey;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', String(isActive));
+    });
+}
+
+const mapLayerControl = L.control({ position: 'bottomleft' });
+mapLayerControl.onAdd = function () {
+    const container = L.DomUtil.create('div', 'map-layer-control glass-panel');
+    container.setAttribute('role', 'group');
+    container.setAttribute('aria-label', '地圖圖層切換');
+
+    Object.entries(mapBaseLayerLabels).forEach(([layerKey, label]) => {
+        const button = L.DomUtil.create('button', '', container);
+        button.type = 'button';
+        button.dataset.layer = layerKey;
+        button.textContent = label;
+        button.setAttribute('aria-pressed', String(layerKey === activeBaseLayerKey));
+        if (layerKey === activeBaseLayerKey) button.classList.add('active');
+
+        L.DomEvent.on(button, 'click', (event) => {
+            L.DomEvent.stop(event);
+            setBaseLayer(layerKey);
+        });
+    });
+
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    return container;
+};
+mapLayerControl.addTo(map);
 
 pointGroup.addTo(map);
 
@@ -1534,15 +1596,27 @@ function clearAll() {
 }
 
 // --- Collapsible Panels ---
-document.getElementById('strategyPanelHeader')?.addEventListener('click', () => {
-    document.getElementById('strategyPanel').classList.toggle('collapsed');
+const strategyPanelEl = document.getElementById('strategyPanel');
+const strategyPanelHeaderEl = document.getElementById('strategyPanelHeader');
+
+function syncStrategyPanelState() {
+    if (!strategyPanelEl || !strategyPanelHeaderEl) return;
+    const isExpanded = !strategyPanelEl.classList.contains('collapsed');
+    strategyPanelHeaderEl.setAttribute('aria-expanded', String(isExpanded));
+}
+
+strategyPanelEl?.classList.add('collapsed');
+syncStrategyPanelState();
+
+strategyPanelHeaderEl?.addEventListener('click', () => {
+    strategyPanelEl.classList.toggle('collapsed');
+    syncStrategyPanelState();
 });
 document.getElementById('statsPanelHeader')?.addEventListener('click', () => {
     document.getElementById('statsPanel').classList.toggle('collapsed');
 });
-// Default collapsed on mobile
+// Keep the stats summary compact on mobile.
 if (window.innerWidth <= 768) {
-    document.getElementById('strategyPanel')?.classList.add('collapsed');
     document.getElementById('statsPanel')?.classList.add('collapsed');
 }
 

@@ -491,6 +491,39 @@ footer.controls {
     transform: scale(0.95);
 }
 
+.map-layer-control {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px !important;
+    border-radius: 10px !important;
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+.map-layer-control button {
+    min-width: 42px;
+    height: 30px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-main);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.map-layer-control button:hover {
+    background: var(--subtle-hover);
+}
+
+.map-layer-control button.active {
+    background: var(--primary);
+    color: var(--text-on-primary);
+    box-shadow: var(--active-shadow);
+}
+
 .about-me {
     display: flex;
     align-items: center;
@@ -987,6 +1020,23 @@ footer.controls {
 }
 
 /* Collapsible panels */
+#strategyPanel.collapsed #strategyPanelHeader {
+    margin-bottom: 0 !important;
+}
+
+@media (min-width: 769px) {
+    #strategyPanel {
+        left: 64px !important;
+        max-width: min(320px, calc(100% - 96px));
+    }
+
+    #strategyPanel.collapsed {
+        min-width: 0 !important;
+        overflow: visible !important;
+        padding: 12px 14px !important;
+    }
+}
+
 .strategy-mobile-arrow {
     margin-left: auto;
     font-size: 0.8rem;
