@@ -31,6 +31,14 @@
 | **Page 2 — Algorithm Tutorial** | Animated diagrams for all 7 algorithms + expandable math formulas and variable tables |
 | **Page 3 — DB Batch Optimizer** | Parse GPS Joystick Realm `.db`, reorder coordinates in-place, download modified file |
 
+### 1.1 城市地標 TSP 畫面
+
+在台北市地標點擊座標後，計算 TSP 最佳路線的桌機版與手機版畫面。
+
+| 電腦版 | 手機版 |
+|--------|--------|
+| <img src="assets/readme/tsp-city-desktop.png" alt="Desktop view of Taipei landmark TSP route" width="640"> | <img src="assets/readme/tsp-city-mobile.png" alt="Mobile view of Taipei landmark TSP route" width="260"> |
+
 ---
 
 ### 2. Architecture
